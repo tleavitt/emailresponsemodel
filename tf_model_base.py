@@ -5,11 +5,13 @@ import pandas as pd
 import random
 import sys
 import tensorflow as tf
-from defs import BATCH_LIM, PROJECT_DIR
+from defs import BATCH_LIM, PROJECT_DIR, LBLS
 from data_util import tfDatasetManager, tfConfig
 from util import sysprint
 from sklearn import metrics
 import time
+import logging
+import os
 
 __author__ = 'Tucker Leavitt, Chris Potts'
 
@@ -19,9 +21,6 @@ logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 
 class TfModelBase(object):
     """
-    Subclasses need only define `build_graph`, `train_dict`, and
-    `test_dict`. (They can redefine other methods as well.)
-
     Parameters
     ----------
     hidden_dim : int
@@ -39,13 +38,12 @@ class TfModelBase(object):
     errors : list
         Tracks loss from each iteration during training.
     """
-    def __init__(self, hidden_dim=50, hidden_activation=tf.nn.relu,
-            batch_size=32, max_iter=100, eta=0.005, tol=1e-4, display_progress=1,
+    def __init__(self, hidden_dim=50, hidden_activation=tf.nn.relu, 
+            batch_size=32, eta=0.005, tol=1e-4, display_progress=1,
             summaries_dir = os.path.abspath('{}/summaries'.format(PROJECT_DIR)) ):
         self.hidden_dim = hidden_dim
         self.hidden_activation = tf.nn.tanh
         self.batch_size = batch_size
-        self.max_iter = max_iter
         self.eta = eta
         self.tol = tol
         self.display_progress = display_progress
@@ -87,7 +85,7 @@ class TfModelBase(object):
         raise NotImplementedError
 
 
-    def fit_tfdata(self, tfconfig, **kwargs):
+    def fit_tfdata(self, tfconfig, batches_to_eval=5000, max_iter=10, n_val_batches = 40):
         """ Trains using a tf DatasetManager
 
         Parameters
@@ -104,152 +102,86 @@ class TfModelBase(object):
         """
 
         tf.reset_default_graph()
-        sess = tf.InteractiveSession()
-        self.sess = sess
+        with tf.Graph().as_default():
+            # Initialize datamanager
+            logger.info("Initializing data manager...",)
+            start = time.time()
+            tfdm = tfDatasetManager(tfconfig)
+            self.data_manager = tfdm
+            logger.info("took %d s", time.time() - start)
 
-        # Set up record keepers
-        saver = tf.train.Saver()
+            sess = tf.InteractiveSession()
+            self.sess = sess
 
-        # Build the computation graph. This method is instantiated by
-        # individual subclasses. It defines the model.
-        logger.info("Building model...",)
-        start = time.time()
-        self.build_graph()
-        logger.info("took %d s", time.time() - start)
+            # Build the computation graph. This method is instantiated by
+            # individual subclasses. It defines the model.
 
-        # Optimizer set-up:
-        self.cost = self.get_cost_function()
-        self.optimizer = self.get_optimizer()
+            logger.info("Building model...",)
+            start = time.time()
+            self.build_graph()
+            logger.info("took %d s", time.time() - start)
 
-        # Set up summaries
-        self.add_metrics()
-        train_writer = tf.summary.FileWriter(self.summaries_dir + '/train', sess.graph)
-        dev_writer = tf.summary.FileWriter(self.summaries_dir + '/dev')
-        self.summary = tf.summary.merge_all()
+            # Optimizer set-up:
+            self.global_step = tf.train.create_global_step()
+            self.cost = self.get_cost_function()
+            self.optimizer = self.get_optimizer()
 
-        # Initialize the session variables:
-        self.sess.run(tf.global_variables_initializer())
+            # Set up summaries
+            self.add_metrics()
+            train_writer = tf.summary.FileWriter(self.summaries_dir + '/train', sess.graph)
+            dev_writer = tf.summary.FileWriter(self.summaries_dir + '/dev')
+            self.summary = tf.summary.merge_all()
 
-        # Initialize datamanager
-        logger.info("Initializing data manager...",)
-        start = time.time()
-        tfdm = tfDatasetManager(tfconfig)
-        self.data_manager = tfdm
-        logger.info("took %d s", time.time() - start)
+            # Set up record keepers
+            saver = tf.train.Saver()
 
-        # Training, full dataset for each iteration:
-        for i in range(1, self.max_iter+1):
-            self._progressbar("starting epoch", i)
-            sess.run(tfdm.initializer, feed_dict=tfdm.get_init_feed_dict('train'))
+            # Initialize the session variables:
+            self.sess.run(tf.global_variables_initializer())
 
-            batch_cnt = 0
-            loss = 0
-            try:
-                for it in range(BATCH_LIM):
+            # Training, full dataset for each iteration:
+            for i in range(1, max_iter+1):
+                logger.info("Starting epoch %d", i)
+                sess.run(tfdm.initializer, feed_dict=tfdm.get_init_feed_dict('train'))
 
-                    _, summary, batch_loss = sess.run(
-                        [self.optimizer, self.summary, self.cost],
-                        feed_dict=self.train_dict()
-                    )
+                batch_cnt = 0
+                loss = 0
+                try:
+                    for it in range(BATCH_LIM):
 
-                    train_writer.add_summary(summary,
-                        tf.train.global_step(sess, self.global_step)
-                    )
-                    train_writer.flush()
+                        _, summary, batch_loss = sess.run(
+                            [self.optimizer, self.summary, self.cost],
+                            feed_dict=self.train_dict()
+                        )
 
-                batch_cnt += 1
-                if (batch_cnt > 0 and batch_cnt % 10 == 0):
-                    logger.info("Evaluating on development data")
+                        train_writer.add_summary(summary,
+                            tf.train.global_step(sess, self.global_step)
+                        )
+                        train_writer.flush()
 
-                    dev_labels, dev_preds = self.evaluate_tfdata(sess, 'dev', 
-                                    batch_lim = 20, writer = dev_writer)
-                    logger.info("++ Development set results:")
-                    logger.info("++ Precision: {:.3f}, Recall: {:.3f}, F1: {:.3f}".format(
-                        metrics.precision(dev_labels, dev_preds),
-                        metrics.recall(dev_labels, dev_preds),
-                        metrics.f1_score(dev_labels, dev_preds)
-                    ))
+                        batch_cnt += 1
+                        if (batch_cnt > 0 and batch_cnt % batches_to_eval == 0):
+                            logger.info(" == Evaluating on development data after batch %d", batch_cnt)
 
-                if (batch_cnt > 0 and batch_cnt % 10 == 0):
-                    logger.info(" = batch %d", batch_cnt)
+                            dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
+                                            batch_lim = n_val_batches, writer = dev_writer)
+                            prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds) 
+                            logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
+                            logger.info("== Precision: {:.3f}, Recall: {:.3f}, F1: {:.3f}".format(
+                                prec,
+                                rec,
+                                f1
+                            ))
 
-            except tf.errors.OutOfRangeError:
-                pass
+                    if (batch_cnt > 0 and batch_cnt % 10 == 0):
+                        logger.info(" = batch %d", batch_cnt)
 
-            logger.info("Finished epoch %d, ran %d batches", epoch + 1, batch_cnt)
+                except tf.errors.OutOfRangeError:
+                    pass
+
+                logger.info("Finished epoch %d, ran %d batches", i + 1, batch_cnt)
 
         return self
 
-    def fit(self, X, y, **kwargs):
-        """Standard `fit` method.
-
-        Parameters
-        ----------
-        X : np.array
-        y : array-like
-        kwargs : dict
-            For passing other parameters, e.g., a test set that we
-            want to monitor performance on.
-
-        Returns
-        -------
-        self
-
-        """
-        if isinstance(X, pd.DataFrame):
-            X = X.values
-
-        # Incremental performance:
-        X_dev = kwargs.get('X_dev')
-        if X_dev is not None:
-            dev_iter = kwargs.get('test_iter', 10)
-
-        # One-hot encoding of target `y`, and creation
-        # of a class attribute.
-        y = self.prepare_output_data(y)
-
-        self.input_dim = len(X[0])
-
-        # Start the session:
-        tf.reset_default_graph()
-        self.sess = tf.InteractiveSession()
-
-        # Build the computation graph. This method is instantiated by
-        # individual subclasses. It defines the model.
-        self.build_graph()
-
-        # Optimizer set-up:
-        self.cost = self.get_cost_function()
-        self.optimizer = self.get_optimizer()
-
-        # Initialize the session variables:
-        self.sess.run(tf.global_variables_initializer())
-
-        # Training, full dataset for each iteration:
-        for i in range(1, self.max_iter+1):
-            loss = 0
-
-            for X_batch, y_batch in self.batch_iterator(X, y):
-                _, summary, batch_loss = self.sess.run(
-                    [self.optimizer, self.summary, self.cost],
-                    feed_dict=self.train_dict(X_batch, y_batch))
-                loss += batch_loss
-            self.errors.append(loss)
-            if X_dev is not None and i > 0 and i % dev_iter == 0:
-                self.dev_predictions.append(self.predict(X_dev))
-            if loss < self.tol:
-                self._progressbar("stopping with loss < self.tol", i)
-                break
-            else:
-                self._progressbar("loss: {}".format(loss), i)
-        return self
-
-    def batch_iterator(self, X, y):
-        dataset = zip(X, y)
-        for i in range(0, len(dataset), self.batch_size):
-            batch = dataset[i: i+self.batch_size]
-            X_batch, y_batch = zip(*batch)
-            yield X_batch, y_batch
 
     def get_cost_function(self, **kwargs):
         """Uses `softmax_cross_entropy_with_logits` so the
@@ -269,20 +201,25 @@ class TfModelBase(object):
         pred_labels = tf.cast(tf.argmax(self.model, axis=1), tf.float32)
         true_labels = tf.cast(tf.argmax(self.outputs, axis=1), tf.float32)
 
-        with tf.variable_scope('metrics') as vs:
-            # rep_prec, rp_update = tf.metrics.precision(true_labels_rep, pred_labels_rep)
-            prec = tf.count_nonzero(tf.logical_and(true_labels_rep, pred_labels_rep), dtype=tf.float32) / (1e-8 + tf.count_nonzero(pred_labels_rep, dtype=tf.float32))
-            rep = tf.count_nonzero(tf.logical_and(true_labels_rep, pred_labels_rep), dtype=tf.float32) / (1e-8 + tf.count_nonzero(true_labels_rep, dtype=tf.float32))
-            # rep_rec, rr_update = tf.metrics.recall(true_labels_rep, pred_labels_rep)
-            f1 = 2 * prec * rep / (prec + rep + tf.constant(1e-8))
+        for cl, cl_name in enumerate(LBLS):
 
-        tf.summary.scalar('precision', prec)
-        tf.summary.scalar('recall', rec)
-        tf.summary.scalar('f1', f1)
+            with tf.variable_scope('metrics-{}'.format(cl_name)) as vs:
+                true_labels_cl = tf.equal(true_labels, tf.constant(float(cl)))
+                pred_labels_cl = tf.equal(pred_labels, tf.constant(float(cl)))
+
+                # rep_prec, rp_update = tf.metrics.precision(true_labels, pred_labels)
+                prec = tf.count_nonzero(tf.logical_and(true_labels_cl, pred_labels_cl), dtype=tf.float32) / (1e-8 + tf.count_nonzero(pred_labels_cl, dtype=tf.float32))
+                rep = tf.count_nonzero(tf.logical_and(true_labels_cl, pred_labels_cl), dtype=tf.float32) / (1e-8 + tf.count_nonzero(true_labels_cl, dtype=tf.float32))
+                # rep_rec, rr_update = tf.metrics.recall(true_labels, pred_labels)
+                f1 = 2 * prec * rep / (prec + rep + tf.constant(1e-8))
+
+                tf.summary.scalar('precision-{}'.format(cl_name), prec)
+                tf.summary.scalar('recall-{}'.format(cl_name), rep)
+                tf.summary.scalar('f1-{}'.format(cl_name), f1)
 
     def get_optimizer(self):
         return tf.train.GradientDescentOptimizer(
-            self.eta).minimize(self.cost)
+            self.eta).minimize(self.cost, global_step=self.global_step)
 
     def predict_proba(self, init_dm=True, dataset='dev'):
         """Return probabilistic predictions.
@@ -315,26 +252,23 @@ class TfModelBase(object):
         probs, inputs, outputs = self.predict_proba(init_dm, dataset)
         return [(np.argmax(p), x, y) for p, x, y in zip(probs, inputs, outputs)]
 
+
     def evaluate_tfdata(self, sess, dataset_name='dev', batch_lim=20, writer=None):
-        """Evaluates model performance on @examples.
 
-        This function uses the model to predict labels for @examples and constructs a confusion matrix.
-
-        Returns:
-            the labels and predictions on the given dataset
-        """
         tfdm = self.data_manager
 
         sess.run(tfdm.initializer, feed_dict=tfdm.get_init_feed_dict(dataset_name))
 
         preds = []
         labels = []
+        word_ids = []
+        email_ids = []
         batch_cnt = 0
         try:
             for it in range(batch_lim):
 
-                summary, preds_batch_, labels_batch_ = sess.run(
-                    [self.summary, self.model, self.outputs],
+                summary, preds_batch_, labels_batch_, word_ids_batch, email_ids_batch = sess.run(
+                    [self.summary, self.model, self.outputs, self.word_ids, self.ids_batch],
                     feed_dict=self.test_dict()
                 )
 
@@ -347,6 +281,8 @@ class TfModelBase(object):
 
                 preds += list(preds_batch)
                 labels += list(labels_batch)
+                word_ids += list(word_ids_batch)
+                email_ids += list(email_ids_batch)
 
                 batch_cnt += 1
                 if (batch_cnt > 0 and batch_cnt % 500 == 0):
@@ -357,7 +293,7 @@ class TfModelBase(object):
 
         logger.info("Ran %d batches", batch_cnt) 
 
-        return labels, pred
+        return labels, preds, word_ids, email_ids
 
 
     def _onehot_encode(self, y):

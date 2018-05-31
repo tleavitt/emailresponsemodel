@@ -31,8 +31,10 @@ def _int64_array(value):
 def _int64_feature(value):
   return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
-
 def _bytes_feature(value):
+  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+def _string_feature(value):
   return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
@@ -48,7 +50,7 @@ def write_to_tfrecords(email_examples, filepath):
       body, length, label = email['Body'], email['Length'], email['Label']
       body = np.asarray(body, dtype=np.int64)
       body_raw = body.tostring()
-      id_ = email['Id']
+      id_ = bytes(email['Id'], encoding="utf-8", errors='replace')
       example = tf.train.Example(
           features=tf.train.Features(
               feature={
@@ -70,16 +72,16 @@ def parse_tfrecord(example):
   parsed_features = tf.parse_single_example(example, features)
   parsed_features['Body'] = tf.decode_raw(parsed_features['Body_raw'], out_type=tf.int64)
   parsed_features['Body'] = tf.reshape(parsed_features['Body'], shape=(MAX_LENGTH, 2))
-  return parsed_features['Body'], parsed_features['Length'], parsed_features['Label']
+  return parsed_features['Body'], parsed_features['Length'], parsed_features['Label'], parsed_features['Id']
 
 
 def tf_record_parser(one_hot=True):
 
   def parse(example):
-    body, length, label = parse_tfrecord(example)
+    body, length, label, id_ = parse_tfrecord(example)
     if one_hot:
       label = tf.one_hot(label, N_CLASSES)
-    return body, length, label 
+    return body, length, label, id_
 
   return parse
 
@@ -94,6 +96,6 @@ if __name__ == '__main__':
 
   with tf.Session() as sess:
     pdb.set_trace()
-    body, length, label = sess.run(next_element)
-    print(length)
+    body, length, label, id_ = sess.run(next_element)
+    print(length, id_)
 

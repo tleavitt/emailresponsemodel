@@ -68,7 +68,6 @@ class TfCNNClassifier(TfModelBase):
         Stopping criterion for the loss.
     """
     def __init__(self,
-            vocab,
             embedding=None,
             embed_dim=50,
             max_length=52,

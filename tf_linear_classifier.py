@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 #     max_pool = False
     
 
-class TfBiRNNClassifier(TfModelBase):
+class TfLinearClassifier(TfModelBase):
     """Defines a Bidirectional RNN in which the final hidden state is used as
     the basis for a softmax classifier predicting a label
 
@@ -64,30 +64,15 @@ class TfBiRNNClassifier(TfModelBase):
     def __init__(self,
             embedding=None,
             train_embedding=True,
-            max_length=MAX_LENGTH,
-            hidden_activation = tf.nn.relu,
-            cell_class=tf.nn.rnn_cell.LSTMCell,
-
+            max_length = MAX_LENGTH,
             # model dimensions
-            hidden_size = 100,
-            bidirectional = True,
-            context_size = 50,
-            inputs_keep = 0.6,
-            state_keep = 0.6,
             **kwargs):
 
         self.embedding = embedding
         self.embed_dim = EMBED_SIZE
         self.max_length = max_length
         self.train_embedding = train_embedding
-        self.cell_class = cell_class
-        self.hidden_activation = hidden_activation
 
-        self.hidden_size = hidden_size
-        self.bidirectional = True
-        self.context_size = context_size
-        self.inputs_keep = inputs_keep
-        self.state_keep = state_keep
         super().__init__(**kwargs)
         # self.eta = self.config.lr
 
@@ -110,8 +95,11 @@ class TfBiRNNClassifier(TfModelBase):
         self.inputs_placeholder = tf.reshape(inputs_batch, 
             shape=(batch_size, self.max_length, 2), name="inputs") # word ids and case ids
 
-        self.word_ids, self.case_ids = tf.split(self.inputs_placeholder, 
-                                                num_or_size_splits=2, axis=2)
+        # word_ids, case_ids = tf.split(self.inputs_placeholder, 
+        #                                         num_or_size_splits=2, axis=2)
+
+        self.word_ids = self.inputs_placeholder[:, :, 0]
+        self.case_ids = self.inputs_placeholder[:, :, 1]
 
         self.lens_placeholder = tf.reshape(lens_batch, 
             shape=(batch_size,), name="inputs_lengths")
@@ -120,8 +108,6 @@ class TfBiRNNClassifier(TfModelBase):
             shape=(batch_size, N_CLASSES), name="labels")
 
         # dropout params
-        self.input_keep_prob = tf.placeholder(tf.float32, shape=(), name="input_keep_prob")
-        self.state_keep_prob = tf.placeholder(tf.float32, shape=(), name="state_keep_prob")
 
     def add_wordvec_features(self):
         """Adds a trainable embedding layer.
@@ -155,113 +141,21 @@ class TfBiRNNClassifier(TfModelBase):
         )
 
     def add_prediction_op(self):
-        self.n_word_features = self.embed_dim + N_CASES if self.case_features else self.embed_dim
+        self.n_word_features = self.embed_dim + N_CASES
         x = self.get_features()
-        # x_static = self.parse_case_features(self.add_static_embedding())
-        # x = tf.stack([x_var, x_static], axis=-1) # concatenate the inputs on the last axis
-        # x has shape (batch_size, max_length, embed_dim + N_CASES) 
 
-        # This converts the inputs to a list of lists of dense vector
-        # representations:
-
-        # Defines the RNN structure:
-        outputs = self.run_rnn(x, self.lens_placeholder)
-
-        # Add an attention layer
-        self.attn = self.add_attention_layer(outputs)
-
-        # Add a fully connected softmax layer:
-        preds = tf.contrib.layers.fully_connected(
-            self.attn,
-            N_CLASSES,
-            activation_fn=None
+        # Take the average word vector
+        x_avg = tf.reduce_mean(x, axis=1)
+        W = tf.get_variable('W',
+            shape=(self.n_word_features, N_CLASSES),
+            initializer=tf.contrib.layers.xavier_initializer()
         )
+        b = tf.get_variable('b', shape=(N_CLASSES))
+
+        preds = tf.matmul(x_avg, W) + b
 
         return preds
 
-
-    def create_rnn_cell(self):
-        inner_cell = self.cell_class(
-            self.hidden_dim, activation=self.hidden_activation,
-            initializer=tf.contrib.layers.xavier_initializer()
-        )
-
-        return tf.nn.rnn_cell.DropoutWrapper(
-            inner_cell,
-            input_keep_prob = self.input_keep_prob,
-            state_keep_prob = self.state_keep_prob  
-        )
-
-    def run_rnn(self, x, lens):
-         # Pick out the cell to use here.
-        with tf.variable_scope('rnn'):
-            # cells = []
-            cell_fw = self.create_rnn_cell()
-            cell_bw = self.create_rnn_cell()
-
-            # stacked_cells = tf.nn.rnn_cell.MultiRNNCell(cells)
-            if self.bidirectional:
-                (fw_outputs, bw_outputs), state = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw, 
-                    cell_bw, 
-                    x,
-                    sequence_length=lens,
-                    dtype=tf.float32
-                )
-                """
-                TODO: may need to do finnicky stuff with LSTMStateTuple...?
-                """
-                all_outputs = tf.concat( [fw_outputs, bw_outputs], axis=2 )
-            else:
-                all_outputs, state = tf.nn.dynamic_rnn(cell, x,
-                    sequence_length=lens,
-                    dtype=tf.float32
-                )
-
-        return all_outputs
-
-    def add_attention_layer(self, rnn_outputs):
-        with tf.variable_scope('attention'):
-
-            hidden_size = 2 * self.hidden_size if self.bidirectional else self.hidden_size
-            W = tf.get_variable('W_w',
-               shape = (hidden_size, self.context_size),
-               initializer=tf.contrib.layers.xavier_initializer()
-            )       
-            b = tf.get_variable('b_w',
-                shape = (self.context_size),
-                initializer=tf.contrib.layers.xavier_initializer()
-            )
-
-            # broadcast multiplication by W over time over each batch
-            # outputs_shape = tf.shape(rnn_outputs)
-            # u_flat = tf.tanh( tf.matmul(
-            #         tf.reshape(rnn_outputs, [-1, self.hidden_size]), W
-            #     )) + b
-            # u = tf.reshape(u_flat, (outputs_shape[0], outputs_shape[1], self.context_size))
-            u = tf.einsum('aij,jk->aik', rnn_outputs, W) + b
-
-            # u_flat has shape (batch_size * max_length, context_size)
-            # u has shape (batch_size, max_length, context_size)
-            uw = tf.get_variable('word_context_vector',
-               # shape = (self.context_size, 1),
-               shape = (self.context_size,),
-               initializer=tf.contrib.layers.xavier_initializer(uniform=False)
-            )
-
-            self.alphas = tf.nn.softmax(tf.einsum('aij,j->ai', u, uw), dim=1)
-            # logits = tf.reshape(tf.matmul(u_flat, uw), (outputs_shape[0], outputs_shape[1]))
-            # alphas = tf.nn.softmax(logits)
-            # alphas has shape (batch_size, max_length)
-            # use the alphas to form a weighted sum of the LSTM states
-            # fc_ins = tf.reduce_sum(tf.expand_dims(alphas, 2) * rnn_outputs, axis = 1)
-            weighted_rnn_outputs = tf.einsum('ai,aij->aj', self.alphas, rnn_outputs)
-            # fc_ins = tf.reduce_sum(tf.expand_dims(alphas, axis=2) * rnn_outputs, axis=1)
-
-            # outputs = self.activation_fn(weighted_rnn_outputs) #TODO: consider removing?
-            outputs = weighted_rnn_outputs
-
-        return outputs
 
     def build_graph(self):
         self.define_embedding()
@@ -284,10 +178,7 @@ class TfBiRNNClassifier(TfModelBase):
         dict, list of int
 
         """
-        return {
-            self.input_keep_prob: self.inputs_keep,
-            self.state_keep_prob: self.state_keep,
-        }
+        return {}
 
     def test_dict(self):
         """Converts `X` to an np.array` using _convert_X` and feeds
@@ -304,15 +195,12 @@ class TfBiRNNClassifier(TfModelBase):
         dict, list of int
 
         """
-        return {
-            self.input_keep_prob: 1.0,
-            self.state_keep_prob: 1.0,
-        }
+        return {}
 
     # override to use Adam
     def get_optimizer(self):
         return tf.train.AdamOptimizer(
-            self.eta).minimize(self.cost)
+            self.eta).minimize(self.cost, global_step=self.global_step)
 
 
     def predict_proba(self, init_dm=True, dataset='dev'):

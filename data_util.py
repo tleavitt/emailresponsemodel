@@ -32,7 +32,7 @@ from glove import loadWordVectorsIntoMemory
 from util import one_hot, ConfusionMatrix, read_records
 from glove import load_word_vector_mapping
 from defs import LBLS, NONE, LMAP, NUM, UNK, EMBED_SIZE, MAX_LENGTH, PROJECT_DIR, N_CLASSES
-from defs import FDIM, P_CASE, CASES, START_TOKEN, END_TOKEN
+from defs import FDIM, P_CASE, CASES, CASE2ID, START_TOKEN, END_TOKEN
 from tfdata_helpers import parse_tfrecord, tf_record_parser, tf_filename_func
 
 logger = logging.getLogger(__name__)
@@ -54,14 +54,14 @@ class DMConfig(object):
     n_embeddings = 10000
     len_cutoff = 500 # only consider emails of less than 500 tokens.
     max_length = MAX_LENGTH # all emails will be extended or truncated to have this length.
-    train_filepath = '{}/processed-data/email_records0_train.pkl.gz'.format(PROJECT_DIR)
+    train_filepath = '{}/processed-data/records0_train.pkl.gz'.format(PROJECT_DIR)
     # train_filepath = '{}/processed-data/bl_records0_train.pkl.gz'.format(PROJECT_DIR)
     # train_filepath = '{}/processed-data/buy_records0_train.pkl.gz'.format(PROJECT_DIR)
-    dev_filepath = '{}/processed-data/email_records0_dev.pkl.gz'.format(PROJECT_DIR)
+    dev_filepath = '{}/processed-data/records0_dev.pkl.gz'.format(PROJECT_DIR)
     # dev_filepath = '{}/processed-data/bl_records0_dev.pkl.gz'.format(PROJECT_DIR)
     # dev_filepath = '{}/processed-data/buy_records0_dev.pkl.gz'.format(PROJECT_DIR)
     # test_filepath = '{}/processed-data/email_records0_test.pkl.gz'.format(PROJECT_DIR)
-    test_filepath = '{}/processed-data/bl_records0_test.pkl.gz'.format(PROJECT_DIR)
+    test_filepath = '{}/processed-data/records0_test.pkl.gz'.format(PROJECT_DIR)
     # test_filepath = '{}/processed-data/buy_records0_test.pkl.gz'.format(PROJECT_DIR)
 
     dev_log_file = '{}/lstm/devpredictions.log'.format(PROJECT_DIR)
@@ -356,7 +356,7 @@ class tfDatasetManager(DataManager):
         self.test_filenames = glob(self.config.test_fn_tag)
 
     def init_dataset(self):
-
+        # with tf.Graph().as_default():
         self.filenames_placeholder = tf.placeholder(tf.string, shape=[None])
 
         dataset = tf.data.TFRecordDataset(self.filenames_placeholder)
@@ -402,7 +402,7 @@ def test_main4():
         it = 0
         try:
             while True:
-                feats_batch, lens_batch, labels_batch = sess.run(tfdm.batch_op)                
+                feats_batch, lens_batch, labels_batch, ids_batch = sess.run(tfdm.batch_op)                
                 for feats, length, label in zip(feats_batch, lens_batch, labels_batch):
                     word_ids = feats[1:length-1][:,0] # strip start, end tok, last character, and case features
                     l = np.argmax(label)
@@ -481,7 +481,7 @@ def test_main3():
         it = 0
         try:
             while True:
-                feats, lens, labels = sess.run(tfdm.batch_op)                
+                feats, lens, labels, ids_batch = sess.run(tfdm.batch_op)                
                 lens_list += filter(lambda l: l < len_lim, lens)
                 num_outliers += reduce(lambda cum, l: cum + 1 if l >= len_lim else cum, lens, 0)
                 num_train += feats.shape[0]

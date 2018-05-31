@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from tf_model_base import TfModelBase
 
-__author__ = 'Chris Potts'
+__author__ = 'Tucker Leavitt'
 
 
 class TfQfClassifier(TfModelBase):

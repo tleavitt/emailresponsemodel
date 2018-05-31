@@ -11,6 +11,7 @@ import gzip
 import nltk
 # import tensorflow as tf
 import collections
+import errno
 from pprint import pprint
 try:
     import _pickle as cPickle
@@ -18,39 +19,19 @@ except ImportError:
     import cPickle
 import numpy as np
 from sklearn.model_selection import train_test_split
+import itertools
+import random
+import collections
 
 from data_util import DMConfig, EmailVectorizer
 from tfdata_helpers import write_to_tfrecords, tf_filename_func
 from util import read_records
 
-from defs import N_CLASSES
+from defs import N_CLASSES, BASE_DIR
 
-# DATA_DIR = './processed-data/test_data'
-# DATA_DIR = '../maildir/buy-r/sent_items'
-# BASE_DIR = '../maildir/*'
-# BASE_DIR = '../maildir/buy-r'
-# BASE_DIR = map(os.path.abspath, [
-#     '../maildir/buy-r', '../maildir/lay-k', '../maildir/shackleton-s', '../mail/dir/nemec-g',
-#     '../maildir/dasovich-j', '../maildir/symes-k', 'farmer-d' 
-# ])
-# BASE_DIR = map(os.path.abspath, [
-#     '../maildir/kean-s', '../maildir/kean-s', '../mail/dir/jones-t',
-#     '../maildir/taylor-m', '../maildir/sgermany-c', '../maildirbeck-s' 
-# ])
-BASE_DIR = map(os.path.abspath, [
-   '../maildir/kean-s', '../mail/dir/jones-t',
-    '../maildir/taylor-m', '../maildir/sgermany-c', '../maildir/beck-s' 
-])
-# BASE_DIR = map(os.path.abspath, [
-#     '../maildir/beck-s' , '../maildir/scott-s', '../maildir/rogers-b',
-#      '../maildir/bass-e', '../maildir/sanders-r', '../maildir/campbell-l',      
-#      '../maildir/shapiro-r ', '../maildir/guzman-m', '../maildir/lokay-m',      
-# ])
-# BASE_DIR = ['../maildir/buy-r', '../maildir/lay-k']
-# DATA_DIR = '{}/*'.format(BASE_DIR)
 DATA_DIR = ['{}/*'.format(d) for d in BASE_DIR]
 
-SHOULD_USE_TFRECORDS = True
+SHOULD_USE_TFRECORDS = False
 SHOULD_TOKENIZE = True
 SHOULD_FEATURIZE = True
 SHOULD_PAD = True
@@ -59,10 +40,16 @@ RECORDS_PER_LOOP_ESTIMATE = 10000
 
 # Load tok2id
 config = DMConfig()
-with gzip.open(os.path.abspath(config.tok2id_path)) as f:
-    tok2id = cPickle.load(f)
+if os.path.exists(config.tok2id_path):
+    with gzip.open(os.path.abspath(config.tok2id_path)) as f:
+        tok2id = cPickle.load(f)
 
-email_vectorizer = EmailVectorizer(config, tok2id)
+    email_vectorizer = EmailVectorizer(config, tok2id)
+
+    print("Initialized tok2id and email_vectorizer")
+else:
+    tok2id = None
+    email_vectorizer = None
 
 def strformat_fn(path, start=BASE_DIR):
     return os.path.relpath(path, start) 
@@ -70,13 +57,34 @@ def strformat_fn(path, start=BASE_DIR):
 def get_file_contents(dr):
     if type(dr) == str:
         dr = [dr]
-    for dir in dr:
-        for fn in glob('{}/*/*'.format(os.path.abspath(dir))):
+    for d in dr:
+        for fn in glob('{}/*/*'.format(os.path.abspath(d))):
             if not os.path.isfile(fn):
                 continue
-            with open(fn, 'r') as fp:
-                contents = fp.read()
-            yield contents, strformat_fn(fn, dir)
+
+            try:
+                with open(fn, 'r') as fp:
+                    contents = fp.read()
+            except UnicodeDecodeError: 
+                continue
+
+            yield contents, strformat_fn(fn, d)
+
+
+def shuffle_generator(gen, shuffle_len=1000):
+
+    buf = collections.deque(itertools.islice(gen, shuffle_len))
+    while (len(buf) > 0):
+        # shuffle the buffer, by shifting elements a random amount
+        k = random.randint(-len(buf)//2, len(buf)//2) 
+        buf.rotate(k)
+
+        cur = buf.popleft()
+        nxt = next(gen, None)
+        if nxt is not None:
+            buf.append(nxt);
+        yield cur
+
 
 def match_length(match):
     return match.end(0) - match.start(0)
@@ -134,11 +142,14 @@ def get_message_id(contents):
 
 def parse_body_text(message_data, body_text):
     str_body = body_text.strip()
-    toks = nltk.word_tokenize(str_body)
-    word_feats, length = email_vectorizer.featurize_email(toks, SHOULD_PAD)
-    message_data['Body'] = word_feats
-    message_data['Length'] = length
-
+    if email_vectorizer is not None:
+        toks = nltk.word_tokenize(str_body)
+        word_feats, length = email_vectorizer.featurize_email(toks, SHOULD_PAD)
+        message_data['Body'] = word_feats
+        message_data['Length'] = length
+    else:
+        message_data['Body'] = str_body
+        message_data['Length'] = len(str_body)
 
 def remove_leading_carats(text):
     next_char_to_copy = 0
@@ -179,7 +190,7 @@ def parse_metadata_reply(content, content_start, message_data):
 
 def apply_metadata_parsers(content, message_data, parsers):
     for parser, content_start in parsers:
-        body_start = parser(content[content_start:], message_data)
+        body_start = parser(content[content_start:], message_data, content)
         if body_start >= 0:
             return body_start + content_start
     return -1
@@ -192,13 +203,25 @@ def skip_emptychars(cur_char, content):
         raise ParseError
     return cur_char
 
-def parse_metadata_format_1(content, message_data):
+def extract_email_address(msg, header_re):
+    header_match = re.search(header_re, msg, flags=re.IGNORECASE)
+    if header_match is None: return None
+
+    email_match = re.search(EMAIL_RE, header_match.group(1).strip()) 
+
+    if email_match is None: return None
+
+    return email_match.group(1).strip()
+
+
+def parse_metadata_format_1(content, message_data, full_message):
     cur_char = 0
     try:
         cur_char = skip_emptychars(cur_char, content)
         fromMatch = re.search(FROM_RE, content[cur_char:], flags=re.IGNORECASE)
         if fromMatch:
-            message_data['From'] = fromMatch.group(1).strip()
+            # message_data['From'] = fromMatch.group(1).strip()
+            message_data['From'] = extract_email_address(full_message, HFROM_RE)
             cur_char += fromMatch.end(0)
             cur_char = skip_emptychars(cur_char, content)
 
@@ -212,7 +235,8 @@ def parse_metadata_format_1(content, message_data):
         toMatch = re.search(TO_RE, content[cur_char:], flags=re.IGNORECASE) 
         # match phrases delimitted by semicolons, and potentially spanning multiple lines
         if toMatch:
-            message_data['To'] = toMatch.group(1).strip()
+            # message_data['To'] = toMatch.group(1).strip()
+            message_data['To'] = extract_email_address(full_message, HTO_RE)
             cur_char += toMatch.end(0)
             cur_char = skip_emptychars(cur_char, content)
         # Skip over BCC and CC.
@@ -238,7 +262,7 @@ def parse_metadata_format_1(content, message_data):
 
 
 forward_date_regex = r'[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}\s*[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?(\s*(P|A)M)?'
-def parse_metadata_format_2(content, message_data):
+def parse_metadata_format_2(content, message_data, full_message):
     # idea: from address can have a lot of formats... lets match it more generally
     # Match To
     # then, match Date starting from the start of To
@@ -247,14 +271,17 @@ def parse_metadata_format_2(content, message_data):
     cur_end_char = 0
     toMatch = re.search(TO_RE, content[cur_end_char:], flags=re.IGNORECASE) 
     if toMatch:
-        message_data['To'] = toMatch.group(1).strip() 
+        # message_data['To'] = toMatch.group(1).strip() 
+        message_data['To'] = extract_email_address(full_message, HTO_RE)
         cur_end_char += toMatch.end(0)
 
         # look for dateMatch up to the beginning of toMatch
         dateMatch = get_last_match(forward_date_regex, content[:toMatch.start(0)], flags=re.IGNORECASE) 
         if dateMatch:
             message_data['Date'] = dateMatch.group(0).strip()
-            message_data['From'] = content[:dateMatch.start(0)].strip() # grab everything down to Date
+            # message_data['From'] = content[:dateMatch.start(0)].strip() # grab everything down to Date
+        message_data['From'] = extract_email_address(full_message, HFROM_RE)
+ 
     try:
         cur_end_char = skip_emptychars(cur_end_char, content)
     except ParseError as e:
@@ -267,7 +294,7 @@ def parse_metadata_format_2(content, message_data):
     return cur_end_char
 
 
-def parse_metadata_format_3(content, message_data):
+def parse_metadata_format_3(content, message_data, full_message):
     cur_end_char = 0
     dateMatch = re.search(HDATE_RE, content[cur_end_char:], flags=re.IGNORECASE) 
     if dateMatch:
@@ -275,11 +302,13 @@ def parse_metadata_format_3(content, message_data):
         cur_end_char += dateMatch.end(0)
     fromMatch = re.search(HFROM_RE, content[cur_end_char:], flags=re.IGNORECASE)
     if fromMatch:
-        message_data['From'] = fromMatch.group(1).strip()
+        # message_data['From'] = fromMatch.group(1).strip()
+        message_data['From'] = extract_email_address(full_message, HFROM_RE)
         cur_end_char += fromMatch.end(0)
     toMatch = re.search(HTO_RE, content[cur_end_char:], flags=re.IGNORECASE)
     if toMatch:
-        message_data['To'] = toMatch.group(1).strip()
+        # message_data['To'] = toMatch.group(1).strip()
+        message_data['To'] = extract_email_address(full_message, HTO_RE)
         cur_end_char += toMatch.end(0)
     subjectMatch = re.search(HSUBJECT_RE, content[cur_end_char:], flags=re.IGNORECASE)
     if subjectMatch:
@@ -328,7 +357,15 @@ def write_records_to_csv(records, filename, compress=False):
             writer.writerow(record)
 
 
+def check_dirs(path):
+    try:
+        os.makedirs(os.path.dirname(path))
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
 def write_records_to_pickle(records, filename, compress=True):
+    check_dirs(filename)
     opener = gzip.open if compress else open
     with opener(filename, 'w+') as f:
         cPickle.dump(records, f, -1)
@@ -423,10 +460,10 @@ def undersample(record_generator, total_records = 50000):
     return all_records, record_samples, num_classes
 
 def write_records(data_dir = './processed-data/test_data', start_it = 0, 
-                  record_limit = 50000, loop_limit = 50000, split_ratio = 0.1, conservative = True):
+                  record_limit = 50000, loop_limit = 50000, conservative = True):
     it = start_it 
     num_train_records = 0
-    file_name_generator = get_file_contents(data_dir)
+    file_name_generator = shuffle_generator(get_file_contents(data_dir), 2000)
     # file_name_generator = get_file_contents('test_data/30')
     np.random.seed(42) # for train_test_split
 
@@ -464,7 +501,7 @@ def write_records(data_dir = './processed-data/test_data', start_it = 0,
         else:
             write_func = write_records_to_pickle
             filename_func = lambda dataset, it: os.path.abspath(
-                "./processed-data/buy_records{}_{}.pkl.gz".format(dataset, it)
+                "../processed-data/records{}_{}.pkl.gz".format(it, dataset)
             )
 
         write_func(train, filename_func('train', it))
@@ -482,9 +519,27 @@ def write_records(data_dir = './processed-data/test_data', start_it = 0,
         print("=== {}: {}".format(k, count))
 
 
+def represents_int(s):
+    try: 
+        int(s)
+        return True
+    except ValueError:
+        return False
 
 if __name__ == '__main__':
-    write_records(start_it = 0, data_dir = BASE_DIR, record_limit = 100000, loop_limit=RECORDS_PER_LOOP_ESTIMATE)
+
+    if (len(sys.argv) > 1 and sys.argv[1] == 'tfrecord'):
+        SHOULD_USE_TFRECORDS = True
+
+    record_lim = 10
+    if (len(sys.argv) > 2 and represents_int(sys.argv[2]) ):
+        record_lim = int(sys.argv[2])
+
+    start_it = 0
+    if (len(sys.argv) > 3 and represents_int(sys.argv[3]) ):
+        start_it = int(sys.argv[3])
+
+    write_records(start_it = start_it, data_dir = BASE_DIR, record_limit = record_lim, loop_limit = 10000)
     # records = read_records('./processed-data/skilling_records0_train.pkl.gz')
     # pdb.set_trace()
     # num_ones = reduce(lambda cum, r: cum + r['Label'], records, 0)

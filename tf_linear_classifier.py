@@ -216,11 +216,14 @@ class TfLinearClassifier(TfModelBase):
         of X and n is the number of classes
 
         """
+        if not self.sess:
+            logger.error("model unitnialized, not running batch.")
+            return
         if init_dm:
-            sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
-        self.probs = tf.nn.softmax(self.model)
+            self.sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
+        probs = tf.nn.softmax(self.model)
         return self.sess.run(
-            self.probs, self.attn, self.inputs_placeholder, self.outputs, feed_dict=self.test_dict())
+            [probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch], feed_dict=self.test_dict())
 
     def predict(self, init_dm=True, dataset='dev'):
         """Return classifier predictions, as the class with the
@@ -231,8 +234,8 @@ class TfLinearClassifier(TfModelBase):
         list
 
         """
-        probs, attn, inputs, outputs = self.predict_proba(init_dm, dataset)
-        return [(np.argmax(p), a, x, y) for p, a, x, y in zip(probs, attn, inputs, outputs)]
+        probs, inputs, lens, outputs, email_ids = self.predict_proba(init_dm, dataset)
+        return np.argmax(probs, axis=1), inputs, lens, np.argmax(outputs, axis=1), email_ids
 
 
 

@@ -13,6 +13,7 @@ import pdb
 import numpy as np
 import tensorflow as tf
 
+from util import check_dirs
 from defs import MAX_LENGTH, N_CLASSES
 
 
@@ -42,9 +43,8 @@ def write_to_tfrecords(email_examples, filepath):
   """Converts a dataset to tfrecords."""
   if filepath is None: raise "No filename given."
   print('Writing', filepath)
-  directory = os.path.dirname(filepath)
-  if not os.path.exists(directory):
-    os.makedirs(directory)
+  check_dirs(os.path.dirname(filepath))
+
   with tf.python_io.TFRecordWriter(filepath) as writer:
     for email in email_examples:
       body, length, label = email['Body'], email['Length'], email['Label']

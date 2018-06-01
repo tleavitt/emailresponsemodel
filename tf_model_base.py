@@ -7,7 +7,7 @@ import sys
 import tensorflow as tf
 from defs import BATCH_LIM, PROJECT_DIR, LBLS
 from data_util import tfDatasetManager, tfConfig
-from util import sysprint
+from util import sysprint, check_dirs
 from sklearn import metrics
 import time
 import logging
@@ -64,11 +64,11 @@ class TfModelBase(object):
         self.data_manager = None
 
         if self.summaries_dir is not None:
-            os.makedirs(self.summaries_dir + '/train')
-            os.makedirs(self.summaries_dir + '/dev')
+            check_dirs(self.summaries_dir + '/train')
+            check_dirs(self.summaries_dir + '/dev')
 
         if self.ckpts_prefix is not None:
-            os.makedirs(os.path.dirname(ckpts_prefix))
+            check_dirs(os.path.dirname(ckpts_prefix))
             
         self.params = [
             'hidden_dim', 'hidden_activation', 'max_iter', 'eta']

@@ -29,7 +29,8 @@ BATCH_LIM = 1000 # maximum number of batches per epoch.
 # BATCH_LIM = 1000 # maximum number of batches per epoch.
 
 PROJECT_DIR = os.path.abspath('..')
-BASE_DIR = [os.path.abspath(dr) for dr in [
-   '../maildir/kean-s', '../mail/dir/jones-t',
-    '../maildir/taylor-m', '../maildir/sgermany-c', '../maildir/beck-s' 
-]]
+# BASE_DIR = [os.path.abspath(dr) for dr in [
+#    '../maildir/kean-s', '../mail/dir/jones-t',
+#     '../maildir/taylor-m', '../maildir/sgermany-c', '../maildir/beck-s' 
+# ]]
+BASE_DIR = os.path.abspath('../maildir')

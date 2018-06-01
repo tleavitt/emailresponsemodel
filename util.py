@@ -275,6 +275,12 @@ def read_records(filepath):
     with gzip.open(os.path.abspath(filepath)) as f:
         return cPickle.load(f)
 
+def check_dirs(dir_path):
+    try:
+        os.makedirs(dir_path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
 
 def sysprint(msg):
     sys.stderr.write('\r')

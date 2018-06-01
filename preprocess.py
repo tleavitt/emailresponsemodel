@@ -54,6 +54,20 @@ else:
 def strformat_fn(path, start=BASE_DIR):
     return os.path.relpath(path, start) 
 
+def random_emails_generator(top_dir):
+    all_fns = random.shuffle(glob('{}/*/*/*'.format(os.path.abspath(d))))
+    for fn in all_fns:
+        if not os.path.isfile(fn):
+            continue
+        try:
+            with open(fn, 'r') as fp:
+                contents = fp.read()
+        except UnicodeDecodeError: 
+            continue
+
+        yield contents, strformat_fn(fn, d)
+
+
 def get_file_contents(dr):
     if type(dr) == str:
         dr = [dr]
@@ -357,15 +371,9 @@ def write_records_to_csv(records, filename, compress=False):
             writer.writerow(record)
 
 
-def check_dirs(path):
-    try:
-        os.makedirs(os.path.dirname(path))
-    except OSError as e:
-        if e.errno != errno.EEXIST:
-            raise
 
 def write_records_to_pickle(records, filename, compress=True):
-    check_dirs(filename)
+    check_dirs(os.path.dirname(filename))
     opener = gzip.open if compress else open
     with opener(filename, 'w+') as f:
         cPickle.dump(records, f, -1)
@@ -459,13 +467,14 @@ def undersample(record_generator, total_records = 50000):
         all_records += v
     return all_records, record_samples, num_classes
 
-def write_records(data_dir = './processed-data/test_data', start_it = 0, 
+def write_records(data_dir = BASE_DIR, start_it = 0, 
                   record_limit = 50000, loop_limit = 50000, conservative = True):
+
+    random.seed(42)
     it = start_it 
     num_train_records = 0
-    file_name_generator = shuffle_generator(get_file_contents(data_dir), 2000)
-    # file_name_generator = get_file_contents('test_data/30')
-    np.random.seed(42) # for train_test_split
+    # file_name_generator = shuffle_generator(get_file_contents(data_dir), 2000)
+    file_name_generator = random_emails_generator()
 
     class_counts = {
         CLASS_NO_ACTION: 0,

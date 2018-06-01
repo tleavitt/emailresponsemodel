@@ -55,7 +55,12 @@ def strformat_fn(path, start=BASE_DIR):
     return os.path.relpath(path, start) 
 
 def random_emails_generator(top_dir):
-    all_fns = random.shuffle(glob('{}/*/*/*'.format(os.path.abspath(d))))
+    print("enumerating source files...", end="")
+    sys.stdout.flush()
+    
+    all_fns = glob('{}/*/*/*'.format(os.path.abspath(top_dir)))
+    random.shuffle(all_fns)
+    print("done")
     for fn in all_fns:
         if not os.path.isfile(fn):
             continue
@@ -65,7 +70,7 @@ def random_emails_generator(top_dir):
         except UnicodeDecodeError: 
             continue
 
-        yield contents, strformat_fn(fn, d)
+        yield contents, strformat_fn(fn, top_dir)
 
 
 def get_file_contents(dr):
@@ -474,7 +479,7 @@ def write_records(data_dir = BASE_DIR, start_it = 0,
     it = start_it 
     num_train_records = 0
     # file_name_generator = shuffle_generator(get_file_contents(data_dir), 2000)
-    file_name_generator = random_emails_generator()
+    file_name_generator = random_emails_generator(data_dir)
 
     class_counts = {
         CLASS_NO_ACTION: 0,

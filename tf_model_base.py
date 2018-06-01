@@ -12,12 +12,21 @@ from sklearn import metrics
 import time
 import logging
 import os
+from glob import glob
+import pdb
 
 __author__ = 'Tucker Leavitt, Chris Potts'
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
+
+
+def most_recent_meta_graph_fn(ckpts_prefix):
+    metas = sorted( glob(
+       '{}-*.meta'.format(ckpts_prefix) 
+    ))
+    return metas[0] if len(metas) > 0 else None
 
 class TfModelBase(object):
     """
@@ -38,7 +47,7 @@ class TfModelBase(object):
     errors : list
         Tracks loss from each iteration during training.
     """
-    def __init__(self, hidden_dim=50, hidden_activation=tf.nn.relu, 
+    def __init__(self, ckpts_prefix = None, hidden_dim=50, hidden_activation=tf.nn.relu, 
             batch_size=32, eta=0.005, tol=1e-4, display_progress=1,
             summaries_dir = os.path.abspath('{}/summaries'.format(PROJECT_DIR)) ):
         self.hidden_dim = hidden_dim
@@ -50,6 +59,8 @@ class TfModelBase(object):
         self.errors = []
         self.dev_predictions = []
         self.summaries_dir = summaries_dir
+        self.ckpts_prefix = ckpts_prefix
+        self.data_manager = None
         self.params = [
             'hidden_dim', 'hidden_activation', 'max_iter', 'eta']
 
@@ -85,7 +96,20 @@ class TfModelBase(object):
         raise NotImplementedError
 
 
-    def fit_tfdata(self, tfconfig, batches_to_eval=5000, max_iter=10, n_val_batches = 40):
+    # Load the session variables
+    def try_restore(self, sess, saver):
+        if self.ckpts_prefix is None:
+            return None
+        latest_ckpt_path = tf.train.latest_checkpoint(os.path.dirname(self.ckpts_prefix))
+        # latest_meta_path = most_recent_meta_graph_fn(self.ckpts_prefix)
+        if latest_ckpt_path is not None:
+            # saver = tf.train.import_meta_graph(latest_meta_path)
+            saver.restore(sess, latest_ckpt_path)
+            return True
+        else:
+            return False
+
+    def fit(self, tfconfig, restore_weights = False, batches_to_eval=5000, max_iter=10, n_val_batches = 40):
         """ Trains using a tf DatasetManager
 
         Parameters
@@ -102,83 +126,90 @@ class TfModelBase(object):
         """
 
         tf.reset_default_graph()
-        with tf.Graph().as_default():
-            # Initialize datamanager
+        # with tf.Graph().as_default():
+
+        sess = tf.InteractiveSession()
+        self.sess = sess
+
+        if self.data_manager is None:
             logger.info("Initializing data manager...",)
             start = time.time()
-            tfdm = tfDatasetManager(tfconfig)
-            self.data_manager = tfdm
+            self.data_manager = tfDatasetManager(tfconfig)
             logger.info("took %d s", time.time() - start)
 
-            sess = tf.InteractiveSession()
-            self.sess = sess
 
-            # Build the computation graph. This method is instantiated by
-            # individual subclasses. It defines the model.
+        # Build the computation graph. This method is instantiated by
+        # individual subclasses. It defines the model.
 
-            logger.info("Building model...",)
-            start = time.time()
-            self.build_graph()
-            logger.info("took %d s", time.time() - start)
+        logger.info("Building model...",)
+        start = time.time()
+        self.build_graph()
+        logger.info("took %d s", time.time() - start)
 
-            # Optimizer set-up:
-            self.global_step = tf.train.create_global_step()
-            self.cost = self.get_cost_function()
-            self.optimizer = self.get_optimizer()
+        # Optimizer set-up:
+        self.global_step = tf.train.create_global_step()
+        self.cost = self.get_cost_function()
+        self.optimizer = self.get_optimizer()
 
-            # Set up summaries
-            self.add_metrics()
-            train_writer = tf.summary.FileWriter(self.summaries_dir + '/train', sess.graph)
-            dev_writer = tf.summary.FileWriter(self.summaries_dir + '/dev')
-            self.summary = tf.summary.merge_all()
+        # Set up summaries
+        self.add_metrics()
+        self.summary = tf.summary.merge_all()
 
-            # Set up record keepers
-            saver = tf.train.Saver()
+        self.saver = tf.train.Saver( var_list=tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) )
 
-            # Initialize the session variables:
-            self.sess.run(tf.global_variables_initializer())
 
-            # Training, full dataset for each iteration:
-            for i in range(1, max_iter+1):
-                logger.info("Starting epoch %d", i)
-                sess.run(tfdm.initializer, feed_dict=tfdm.get_init_feed_dict('train'))
 
-                batch_cnt = 0
-                loss = 0
-                try:
-                    for it in range(BATCH_LIM):
+        restored = self.try_restore(sess, self.saver) if restore_weights else False
+        if restored:
+            logger.info("-- Restored model")
+        if not restored:
+            logger.info("-- Did not restore model")
+            self.sess.run(tf.global_variables_initializer()) 
 
-                        _, summary, batch_loss = sess.run(
-                            [self.optimizer, self.summary, self.cost],
-                            feed_dict=self.train_dict()
-                        )
+        train_writer = tf.summary.FileWriter(self.summaries_dir + '/train', sess.graph)
+        dev_writer = tf.summary.FileWriter(self.summaries_dir + '/dev')
 
-                        train_writer.add_summary(summary,
-                            tf.train.global_step(sess, self.global_step)
-                        )
-                        train_writer.flush()
+        for i in range(1, max_iter+1):
+            logger.info("Starting epoch %d", i)
 
-                        batch_cnt += 1
-                        if (batch_cnt > 0 and batch_cnt % batches_to_eval == 0):
-                            logger.info(" == Evaluating on development data after batch %d", batch_cnt)
+            sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict('train')) 
+            batch_cnt = 0
+            loss = 0
+            try:
+                for it in range(BATCH_LIM):
 
-                            dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
-                                            batch_lim = n_val_batches, writer = dev_writer)
-                            prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds) 
-                            logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
-                            logger.info("== Precision: {:.3f}, Recall: {:.3f}, F1: {:.3f}".format(
-                                prec,
-                                rec,
-                                f1
-                            ))
+                    _, summary, batch_loss = sess.run(
+                        [self.optimizer, self.summary, self.cost],
+                        feed_dict=self.train_dict()
+                    )
 
-                    if (batch_cnt > 0 and batch_cnt % 10 == 0):
-                        logger.info(" = batch %d", batch_cnt)
+                    train_writer.add_summary(summary,
+                        tf.train.global_step(sess, self.global_step)
+                    )
+                    train_writer.flush()
 
-                except tf.errors.OutOfRangeError:
-                    pass
+                    batch_cnt += 1
+                    if (batch_cnt > 0 and batch_cnt % batches_to_eval == 0):
+                        logger.info(" == Evaluating on development data after batch %d", batch_cnt)
 
-                logger.info("Finished epoch %d, ran %d batches", i + 1, batch_cnt)
+                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
+                                        batch_lim = n_val_batches, writer = dev_writer)
+                        prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds, average='micro') 
+                        logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
+                        logger.info("== Precision: %.3f, Recall: %.3f, F1: %.3f", prec, rec, f1 )
+
+                        # Save model
+                        if self.ckpts_prefix is not None:
+                            logger.info("-- Saving model")
+                            self.saver.save(sess, self.ckpts_prefix, global_step=self.global_step) 
+
+                if (batch_cnt > 0 and batch_cnt % 10 == 0):
+                    logger.info(" = batch %d", batch_cnt)
+
+            except tf.errors.OutOfRangeError:
+                pass
+
+            logger.info("Finished epoch %d, ran %d batches", i + 1, batch_cnt)
 
         return self
 
@@ -255,9 +286,7 @@ class TfModelBase(object):
 
     def evaluate_tfdata(self, sess, dataset_name='dev', batch_lim=20, writer=None):
 
-        tfdm = self.data_manager
-
-        sess.run(tfdm.initializer, feed_dict=tfdm.get_init_feed_dict(dataset_name))
+        sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset_name))
 
         preds = []
         labels = []

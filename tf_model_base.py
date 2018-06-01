@@ -28,6 +28,7 @@ def most_recent_meta_graph_fn(ckpts_prefix):
     ))
     return metas[0] if len(metas) > 0 else None
 
+
 class TfModelBase(object):
     """
     Parameters
@@ -61,6 +62,14 @@ class TfModelBase(object):
         self.summaries_dir = summaries_dir
         self.ckpts_prefix = ckpts_prefix
         self.data_manager = None
+
+        if self.summaries_dir is not None:
+            os.makedirs(self.summaries_dir + '/train')
+            os.makedirs(self.summaries_dir + '/dev')
+
+        if self.ckpts_prefix is not None:
+            os.makedirs(os.path.dirname(ckpts_prefix))
+            
         self.params = [
             'hidden_dim', 'hidden_activation', 'max_iter', 'eta']
 
@@ -163,8 +172,9 @@ class TfModelBase(object):
         if restored:
             logger.info("-- Restored model")
         if not restored:
-            logger.info("-- Did not restore model")
+            logger.info("-- Initializingt new model")
             self.sess.run(tf.global_variables_initializer()) 
+
 
         train_writer = tf.summary.FileWriter(self.summaries_dir + '/train', sess.graph)
         dev_writer = tf.summary.FileWriter(self.summaries_dir + '/dev')

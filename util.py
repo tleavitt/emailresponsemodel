@@ -13,6 +13,7 @@ from collections import defaultdict, Counter, OrderedDict
 import numpy as np
 from numpy import array, zeros, allclose
 import gzip
+import errno
 try:
     import _pickle as cPickle
 except ImportError:

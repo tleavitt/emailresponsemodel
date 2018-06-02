@@ -33,7 +33,6 @@ class TfModelBase(object):
     """
     Parameters
     ----------
-    hidden_dim : int
     hidden_activation : tf.nn function
     max_iter : int
     eta : float
@@ -48,11 +47,10 @@ class TfModelBase(object):
     errors : list
         Tracks loss from each iteration during training.
     """
-    def __init__(self, ckpts_prefix = None, hidden_dim=50, hidden_activation=tf.nn.relu, 
+    def __init__(self, ckpts_prefix = None,
             batch_size=32, eta=0.005, tol=1e-4, display_progress=1,
             summaries_dir = os.path.abspath('{}/summaries'.format(PROJECT_DIR)) ):
-        self.hidden_dim = hidden_dim
-        self.hidden_activation = tf.nn.tanh
+
         self.batch_size = batch_size
         self.eta = eta
         self.tol = tol
@@ -71,7 +69,7 @@ class TfModelBase(object):
             check_dirs(os.path.dirname(ckpts_prefix))
             
         self.params = [
-            'hidden_dim', 'hidden_activation', 'max_iter', 'eta']
+            'hidden_activation', 'max_iter', 'eta']
 
     def build_graph(self):
         """Define the computation graph. This needs to define
@@ -219,7 +217,7 @@ class TfModelBase(object):
             except tf.errors.OutOfRangeError:
                 pass
 
-            logger.info("Finished epoch %d, ran %d batches", i + 1, batch_cnt)
+            logger.info("Finished epoch %d, ran %d batches", i, batch_cnt)
 
         return self
 

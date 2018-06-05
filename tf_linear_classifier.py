@@ -169,7 +169,7 @@ class TfLinearClassifier(TfModelBase):
         return {self.data_manager.handle: self.data_manager.handle_train}
 
     def dev_dict(self):
-        return {self.data_manager.handle: self.data_manager.handle_train}
+        return {self.data_manager.handle: self.data_manager.handle_dev}
 
     def test_dict(self):
         return {self.data_manager.handle: self.data_manager.handle_test}

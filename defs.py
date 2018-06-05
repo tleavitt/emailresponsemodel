@@ -25,7 +25,7 @@ N_CASES = len(CASES)
 N_CLASSES = 2
 EMBED_SIZE = 50
 MAX_LENGTH = 300 # maximum number of words to consider in an email.
-BATCH_LIM = 1000 # maximum number of batches per epoch.
+BATCH_LIM = 5000 # maximum number of batches per epoch.
 # BATCH_LIM = 1000 # maximum number of batches per epoch.
 
 PROJECT_DIR = os.path.abspath('..')

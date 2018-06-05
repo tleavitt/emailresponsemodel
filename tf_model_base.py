@@ -116,7 +116,7 @@ class TfModelBase(object):
         else:
             return False
 
-    def fit(self, tfconfig, restore_weights = False, batches_to_eval=5000, max_iter=10, n_val_batches = 40):
+    def fit(self, tfconfig, restore_weights = False, batches_to_eval=5000, max_iter=10, n_val_batches = 40, test_at_end=True):
         """ Trains using a tf DatasetManager
 
         Parameters
@@ -202,7 +202,7 @@ class TfModelBase(object):
 
                         dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
                                         batch_lim = n_val_batches, writer = dev_writer)
-                        prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds, average='micro') 
+                        prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds, average='binary') 
                         logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
                         logger.info("== Precision: %.3f, Recall: %.3f, F1: %.3f", prec, rec, f1 )
 
@@ -218,6 +218,16 @@ class TfModelBase(object):
                 pass
 
             logger.info("Finished epoch %d, ran %d batches", i, batch_cnt)
+
+        if test_at_end:
+            logger.info(" == Evaluating on test data after training")
+
+            n_test_batches = 100
+            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'test', 
+                batch_lim = n_test_batches, writer = None)
+            prec, rec, f1, _ = metrics.precision_recall_fscore_support(test_labels, test_preds, average='binary') 
+            logger.info("== Results for %d batches of size %d", n_test_batches, self.data_manager.config.batch_size)
+            logger.info("== Precision: %.3f, Recall: %.3f, F1: %.3f", prec, rec, f1 )
 
         return self
 

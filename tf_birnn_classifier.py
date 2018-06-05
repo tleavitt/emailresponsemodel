@@ -289,41 +289,20 @@ class TfBiRNNClassifier(TfModelBase):
 
 
     def train_dict(self):
-        """Converts `X` to an np.array` using _convert_X` and feeds
-        this to `inputs`, , and gets the true length of each example
-        and passes it to `fit` as well. `y` is fed to `outputs`.
-
-        Parameters
-        ----------
-        X : list of lists
-        y : list
-
-        Returns
-        -------
-        dict, list of int
-
-        """
         return {
+            self.data_manager.handle: self.data_manager.handle_train,
             self.input_keep_prob: self.inputs_keep,
             self.state_keep_prob: self.state_keep,
         }
 
+    def dev_dict(self):
+        return {self.data_manager.handle: self.data_manager.handle_dev,
+            self.input_keep_prob: 1.0,
+            self.state_keep_prob: 1.0,
+        }
+
     def test_dict(self):
-        """Converts `X` to an np.array` using _convert_X` and feeds
-        this to `inputs`, and gets the true length of each example and
-        passes it to `fit` as well.
-
-        Parameters
-        ----------
-        X : list of lists
-        y : list
-
-        Returns
-        -------
-        dict, list of int
-
-        """
-        return {
+        return {self.data_manager.handle: self.data_manager.handle_test,
             self.input_keep_prob: 1.0,
             self.state_keep_prob: 1.0,
         }

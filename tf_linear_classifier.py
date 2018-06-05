@@ -221,9 +221,8 @@ class TfLinearClassifier(TfModelBase):
             return
         if init_dm:
             self.sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
-        probs = tf.nn.softmax(self.model)
         return self.sess.run(
-            [probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch], feed_dict=self.test_dict())
+            [self.probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch], feed_dict=self.test_dict())
 
     def predict(self, init_dm=True, dataset='dev'):
         """Return classifier predictions, as the class with the

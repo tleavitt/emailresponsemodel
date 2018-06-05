@@ -352,8 +352,7 @@ class TfBiRNNClassifier(TfModelBase):
             return
         if init_dm:
             self.sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
-        probs = tf.nn.softmax(self.model)
-        ops = [probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch]
+        ops = [self.probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch]
         if self.use_attn:
             ops.append(self.attn)
         return self.sess.run(ops, feed_dict=self.test_dict())

@@ -227,6 +227,7 @@ class TfModelBase(object):
         input should *not* have a softmax activation
         applied to it.
         """
+        self.probs = tf.nn.softmax(self.model)
         cost = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits_v2(
                 logits=self.model, labels=self.outputs))
@@ -273,11 +274,13 @@ class TfModelBase(object):
         of X and n is the number of classes
 
         """
+        if not self.sess:
+            logger.error("model unitnialized, not running batch.")
+            return
         if init_dm:
-            sess.run(self.dm.initializer, feed_dict=self.dm.get_init_feed_dict(dataset))
-        self.probs = tf.nn.softmax(self.model)
+            self.sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
         return self.sess.run(
-            self.probs, self.inputs_placeholder, self.outputs, feed_dict=self.test_dict())
+            [self.probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch], feed_dict=self.test_dict())
 
     def predict(self, init_dm=True, dataset='dev'):
         """Return classifier predictions, as the class with the
@@ -288,8 +291,8 @@ class TfModelBase(object):
         list
 
         """
-        probs, inputs, outputs = self.predict_proba(init_dm, dataset)
-        return [(np.argmax(p), x, y) for p, x, y in zip(probs, inputs, outputs)]
+        probs, inputs, lens, outputs, email_ids = self.predict_proba(init_dm, dataset)
+        return np.argmax(probs, axis=1), inputs, lens, np.argmax(outputs, axis=1), email_ids
 
 
     def evaluate_tfdata(self, sess, dataset_name='dev', batch_lim=20, writer=None):
@@ -305,7 +308,7 @@ class TfModelBase(object):
             for it in range(batch_lim):
 
                 summary, preds_batch_, labels_batch_, word_ids_batch, email_ids_batch = sess.run(
-                    [self.summary, self.model, self.outputs, self.word_ids, self.ids_batch],
+                    [self.summary, self.probs, self.outputs, self.word_ids, self.ids_batch],
                     feed_dict=self.test_dict()
                 )
 

@@ -49,7 +49,7 @@ class TfRandomClassifier(TfModelBase):
 
         batch_size = tf.shape(inputs_batch)[0]
         self.inputs_placeholder = tf.reshape(inputs_batch, 
-            shape=(batch_size, self.max_length, 2), name="inputs") # word ids and case ids
+            shape=(batch_size, MAX_LENGTH, 2), name="inputs") # word ids and case ids
 
         # word_ids, case_ids = tf.split(self.inputs_placeholder, 
         #                                         num_or_size_splits=2, axis=2)
@@ -67,7 +67,7 @@ class TfRandomClassifier(TfModelBase):
 
 
     def add_prediction_op(self):
-        batch_size = tf.shape(inputs_batch)[0]
+        batch_size = tf.shape(self.inputs_placeholder)[0]
         return tf.random_uniform(
             shape=(batch_size, N_CLASSES)
         )
@@ -77,6 +77,8 @@ class TfRandomClassifier(TfModelBase):
         self.add_placeholders()
         self.model = self.add_prediction_op()
 
+    def get_optimizer(self):
+        return tf.no_op();
 
     def train_dict(self):
         return {}

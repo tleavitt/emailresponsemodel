@@ -6,7 +6,7 @@ import tensorflow as tf
 from tf_model_base import TfModelBase
 import warnings
 import pdb
-from defs import EMBED_SIZE, N_CASES, N_CLASSES
+from defs import EMBED_SIZE, N_CASES, N_CLASSES, MAX_LENGTH
 
 __author__ = 'Tucker Leavitt'
 
@@ -22,7 +22,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 #     max_pool = False
     
 
-class TfMlpClassifier(TfModelBase):
+class TfMLPClassifier(TfModelBase):
     """Defines a Bidirectional RNN in which the final hidden state is used as
     the basis for a softmax classifier predicting a label
 
@@ -62,24 +62,26 @@ class TfMlpClassifier(TfModelBase):
     """
 
     def __init__(self,
-            vocab,
             embedding=None,
             train_embedding=True,
-            max_length = 52,
-            hidden_activation = tf.nn.tanh,
+            max_length = MAX_LENGTH,
+
+            # model parameters,
+            hidden_dim = 100,
+            hidden_activation = tf.tanh,
+            keep_prob = 0.75, 
             # model dimensions
-            hidden_dim = 50
             **kwargs):
 
-        self.vocab = vocab
-        self.vocab_size = len(vocab)
         self.embedding = embedding
         self.embed_dim = EMBED_SIZE
         self.max_length = max_length
         self.train_embedding = train_embedding
-        self.hidden_activation = hidden_activation
 
-        self.hidden_dim = hidden_dim
+        self.hidem_dim = hiddem_dim
+        self.hidden_activation = hidden_dim
+        self.keep_prob_ = keep_prob
+
         super().__init__(**kwargs)
         # self.eta = self.config.lr
 
@@ -96,14 +98,17 @@ class TfMlpClassifier(TfModelBase):
     def add_placeholders(self):
         """Generates placeholder variables to represent the input tensors
         """
-        inputs_batch, lens_batch, labels_batch, ids_batch = self.data_manager.batch_op
+        inputs_batch, lens_batch, labels_batch, self.ids_batch = self.data_manager.batch_op
 
         batch_size = tf.shape(inputs_batch)[0]
         self.inputs_placeholder = tf.reshape(inputs_batch, 
             shape=(batch_size, self.max_length, 2), name="inputs") # word ids and case ids
 
-        self.word_ids, self.case_ids = tf.split(self.inputs_placeholder, 
-                                                num_or_size_splits=2, axis=2)
+        # word_ids, case_ids = tf.split(self.inputs_placeholder, 
+        #                                         num_or_size_splits=2, axis=2)
+
+        self.word_ids = self.inputs_placeholder[:, :, 0]
+        self.case_ids = self.inputs_placeholder[:, :, 1]
 
         self.lens_placeholder = tf.reshape(lens_batch, 
             shape=(batch_size,), name="inputs_lengths")
@@ -112,6 +117,7 @@ class TfMlpClassifier(TfModelBase):
             shape=(batch_size, N_CLASSES), name="labels")
 
         # dropout params
+        self.keep_prob = tf.placeholder(tf.float32, shape=(), name="keep_prob")
 
     def add_wordvec_features(self):
         """Adds a trainable embedding layer.
@@ -144,31 +150,29 @@ class TfMlpClassifier(TfModelBase):
             axis=2
         )
 
-
-    def linear_layer(self, x, indim, outdim, scope, activation=None):
-        with tf.variable_scope(scope) as vs:
-            W = tf.get_variable('W',
-                shape=(indim, outdim),
-                initializer=initializer=tf.contrib.layers.xavier_initializer()
-            )
-            b = tf.get_variable('b', shape=(outdim))
-
-        y = tf.matmul(x, W) + b
-        return y if activation is None else activation(y)
-
-
     def add_prediction_op(self):
-        self.n_word_features = self.embed_dim + N_CASES if self.case_features else self.embed_dim
+        self.n_word_features = self.embed_dim + N_CASES
         x = self.get_features()
 
         # Take the average word vector
         x_avg = tf.reduce_mean(x, axis=1)
+        W1= tf.get_variable('W1',
+            shape=(self.n_word_features, self.hidden_dim),
+            initializer=tf.contrib.layers.xavier_initializer()
+        )
+        b1 = tf.get_variable('b1', shape=(self.hidden_dim))
 
-        h = self.linear_layer(x_avg, self.n_word_features, self.hidden_dim,
-            'l1', self.hidden_activation)
+        h = self.hidden_activation(tf.matmul(x_avg, W1) + b1)
+        h_drop = tf.nn.dropout(h, self.keep_prob)
 
-        preds = self.linear_layer(h, self.hidden_dim, N_CLASSES, 'l2')
+        W2 = tf.get_variable('W2',
+            shape=(self.hidden_dim, N_CLASSES),
+            initializer=tf.contrib.layers.xavier_initializer()
+        )
+        b2 = tf.get_variable('b2', shape=(N_CLASSES))
 
+        preds = tf.matmul(h_drop, W2) + b2
+        
         return preds
 
 
@@ -193,7 +197,7 @@ class TfMlpClassifier(TfModelBase):
         dict, list of int
 
         """
-        return {}
+        return {self.keep_prob: self.keep_prob_}
 
     def test_dict(self):
         """Converts `X` to an np.array` using _convert_X` and feeds
@@ -210,12 +214,12 @@ class TfMlpClassifier(TfModelBase):
         dict, list of int
 
         """
-        return {}
+        return {self.keep_prob: 1.0}
 
     # override to use Adam
     def get_optimizer(self):
         return tf.train.AdamOptimizer(
-            self.eta).minimize(self.cost)
+            self.eta).minimize(self.cost, global_step=self.global_step)
 
 
     def predict_proba(self, init_dm=True, dataset='dev'):
@@ -231,11 +235,14 @@ class TfMlpClassifier(TfModelBase):
         of X and n is the number of classes
 
         """
+        if not self.sess:
+            logger.error("model unitnialized, not running batch.")
+            return
         if init_dm:
-            sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
-        self.probs = tf.nn.softmax(self.model)
+            self.sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset))
+        probs = tf.nn.softmax(self.model)
         return self.sess.run(
-            self.probs, self.attn, self.inputs_placeholder, self.outputs, feed_dict=self.test_dict())
+            [probs, self.inputs_placeholder, self.lens_placeholder, self.outputs, self.ids_batch], feed_dict=self.test_dict())
 
     def predict(self, init_dm=True, dataset='dev'):
         """Return classifier predictions, as the class with the
@@ -246,38 +253,7 @@ class TfMlpClassifier(TfModelBase):
         list
 
         """
-        probs, attn, inputs, outputs = self.predict_proba(init_dm, dataset)
-        return [(np.argmax(p), a, x, y) for p, a, x, y in zip(probs, attn, inputs, outputs)]
+        probs, inputs, lens, outputs, email_ids = self.predict_proba(init_dm, dataset)
+        return np.argmax(probs, axis=1), inputs, lens, np.argmax(outputs, axis=1), email_ids
 
 
-
-
-def simple_example():
-    vocab = ['a', 'b', '$UNK']
-
-    train = [
-        [list('ab'), 'good'],
-        [list('aab'), 'good'],
-        [list('abb'), 'good'],
-        [list('aabb'), 'good'],
-        [list('ba'), 'bad'],
-        [list('baa'), 'bad'],
-        [list('bba'), 'bad'],
-        [list('bbaa'), 'bad']]
-
-    test = [
-        [list('aaab'), 'good'],
-        [list('baaa'), 'bad']]
-
-    mod = TfCNNClassifier(
-        vocab=vocab, max_iter=100, max_length=4)
-
-    X, y = zip(*train)
-    mod.fit(X, y)
-
-    X_test, _ = zip(*test)
-    print('\nPredictions:', mod.predict(X_test))
-
-
-if __name__ == '__main__':
-    simple_example()

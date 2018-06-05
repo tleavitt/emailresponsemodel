@@ -22,68 +22,24 @@ warnings.filterwarnings("ignore", category=UserWarning)
 #     max_pool = False
     
 
-class TfLinearClassifier(TfModelBase):
+class TfRandomClassifier(TfModelBase):
     """Defines a Bidirectional RNN in which the final hidden state is used as
     the basis for a softmax classifier predicting a label
 
     Parameters
     ----------
-    vocab : list
-        The full vocabulary. `_convert_X` will convert the data provided
-        to `fit` and `predict` methods into a list of indices into this
-        list of items.
-    embedding : 2d np.array or None
-        If `None`, then a random embedding matrix is constructed.
-        Otherwise, this should be a 2d array aligned row-wise with
-        `vocab`, with each row giving the input representation for the
-        corresponding word. For instance, to roughly duplicate what
-        is done by default, one could do
-            `np.array([np.random.randn(h) for _ in vocab])`
-        where n is the embedding dimensionality (`embed_dim`).
-    embed_dim : int
-        Dimensionality of the inputs/embeddings. If `embedding`
-        is supplied, then this value is set to be the same as its
-        column dimensionality. Otherwise, this value is used to create
-        the embedding Tensor (see `_define_embedding`).
-    max_length : int
-        Maximum sequence length.
-    train_embedding : bool
-        Whether to update the embedding matrix when training.
-    hidden_activation : tf.nn activation
-       E.g., tf.nn.relu, tf.nn.relu, tf.nn.selu.
-    hidden_dim : int
-        Dimensionality of the hidden layer.
-    max_iter : int
-        Maximum number of iterations allowed in training.
-    eta : float
-        Learning rate.
-    tol : float
-        Stopping criterion for the loss.
+    None
     """
 
     def __init__(self,
-            embedding=None,
-            train_embedding=True,
-            max_length = MAX_LENGTH,
             # model dimensions
             **kwargs):
-
-        self.embedding = embedding
-        self.embed_dim = EMBED_SIZE
-        self.max_length = max_length
-        self.train_embedding = train_embedding
 
         super().__init__(**kwargs)
         # self.eta = self.config.lr
 
         self.params += [
             'embedding', 'embed_dim', 'max_length', 'train_embedding']
-
-    def define_embedding(self):
-
-        if type(self.embedding) == type(None):
-            self.embedding = np.random.uniform(size=[self.vocab_size, self.embed_dim],
-                low=-1.0, high=1.0)
 
 
     def add_placeholders(self):
@@ -109,75 +65,20 @@ class TfLinearClassifier(TfModelBase):
 
         # dropout params
 
-    def add_wordvec_features(self):
-        """Adds a trainable embedding layer.
-
-        Returns:
-            embeddings: tf.Tensor of shape (None, max_length, n_features*embed_dim)
-        """
-        assert self.embedding.shape[-1] == self.embed_dim
-        all_embeddings = tf.get_variable('embeddings', 
-            shape=self.embedding.shape, 
-            initializer=tf.constant_initializer(self.embedding),
-            trainable=self.train_embedding
-        )     
-
-        input_embeddings = tf.nn.embedding_lookup(
-            params=all_embeddings, 
-            ids=self.word_ids
-        )                                                                                                          
-        embeddings = tf.reshape(input_embeddings, 
-            (-1, self.max_length, self.embed_dim)
-        )                                                                                                
-        return embeddings
-
-    def add_case_features(self):
-        return tf.one_hot(self.case_ids, N_CASES) 
-
-    def get_features(self):
-        return tf.concat(
-            [self.add_wordvec_features(), self.add_case_features()], 
-            axis=2
-        )
 
     def add_prediction_op(self):
-        self.n_word_features = self.embed_dim + N_CASES
-        x = self.get_features()
-
-        # Take the average word vector
-        x_avg = tf.reduce_mean(x, axis=1)
-        W = tf.get_variable('W',
-            shape=(self.n_word_features, N_CLASSES),
-            initializer=tf.contrib.layers.xavier_initializer()
+        batch_size = tf.shape(inputs_batch)[0]
+        return tf.random_uniform(
+            shape=(batch_size, N_CLASSES)
         )
-        b = tf.get_variable('b', shape=(N_CLASSES))
-
-        preds = tf.matmul(x_avg, W) + b
-
-        return preds
 
 
     def build_graph(self):
-        self.define_embedding()
         self.add_placeholders()
         self.model = self.add_prediction_op()
 
 
     def train_dict(self):
-        """Converts `X` to an np.array` using _convert_X` and feeds
-        this to `inputs`, , and gets the true length of each example
-        and passes it to `fit` as well. `y` is fed to `outputs`.
-
-        Parameters
-        ----------
-        X : list of lists
-        y : list
-
-        Returns
-        -------
-        dict, list of int
-
-        """
         return {}
 
     def test_dict(self):
@@ -196,11 +97,6 @@ class TfLinearClassifier(TfModelBase):
 
         """
         return {}
-
-    # override to use Adam
-    def get_optimizer(self):
-        return tf.train.AdamOptimizer(
-            self.eta).minimize(self.cost, global_step=self.global_step)
 
 
     def predict_proba(self, init_dm=True, dataset='dev'):

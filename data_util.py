@@ -11,7 +11,7 @@ except ImportError:
 import os
 import pdb
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy import stats
 import nltk

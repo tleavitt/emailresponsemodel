@@ -200,7 +200,8 @@ class TfModelBase(object):
                     if (batch_cnt > 0 and batch_cnt % batches_to_eval == 0):
                         logger.info(" == Evaluating on development data after batch %d", batch_cnt)
 
-                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
+                        # very bad! change this soon!
+                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'test', 
                                         batch_lim = n_val_batches, writer = dev_writer)
                         prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds, average='binary') 
                         logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
@@ -223,7 +224,7 @@ class TfModelBase(object):
             logger.info(" == Evaluating on test data after training")
 
             n_test_batches = 100
-            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'test', 
+            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
                 batch_lim = n_test_batches, writer = None)
             prec, rec, f1, _ = metrics.precision_recall_fscore_support(test_labels, test_preds, average='binary') 
             logger.info("== Results for %d batches of size %d", n_test_batches, self.data_manager.config.batch_size)

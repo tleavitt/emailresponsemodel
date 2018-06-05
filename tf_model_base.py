@@ -106,7 +106,7 @@ class TfModelBase(object):
     # Load the session variables
     def try_restore(self, sess, saver):
         if self.ckpts_prefix is None:
-            return None
+            return False
         latest_ckpt_path = tf.train.latest_checkpoint(os.path.dirname(self.ckpts_prefix))
         # latest_meta_path = most_recent_meta_graph_fn(self.ckpts_prefix)
         if latest_ckpt_path is not None:
@@ -170,7 +170,7 @@ class TfModelBase(object):
         if restored:
             logger.info("-- Restored model")
         if not restored:
-            logger.info("-- Initializingt new model")
+            logger.info("-- Initializing new model")
             self.sess.run(tf.global_variables_initializer()) 
 
 
@@ -201,7 +201,7 @@ class TfModelBase(object):
                         logger.info(" == Evaluating on development data after batch %d", batch_cnt)
 
                         # very bad! change this soon!
-                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'test', 
+                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
                                         batch_lim = n_val_batches, writer = dev_writer)
                         prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds, average='binary') 
                         logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
@@ -211,6 +211,8 @@ class TfModelBase(object):
                         if self.ckpts_prefix is not None:
                             logger.info("-- Saving model")
                             self.saver.save(sess, self.ckpts_prefix, global_step=self.global_step) 
+                        # reset, back to training dataset
+                        sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict('train')) 
 
                 if (batch_cnt > 0 and batch_cnt % 10 == 0):
                     logger.info(" = batch %d", batch_cnt)
@@ -224,7 +226,7 @@ class TfModelBase(object):
             logger.info(" == Evaluating on test data after training")
 
             n_test_batches = 100
-            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
+            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'test', 
                 batch_lim = n_test_batches, writer = None)
             prec, rec, f1, _ = metrics.precision_recall_fscore_support(test_labels, test_preds, average='binary') 
             logger.info("== Results for %d batches of size %d", n_test_batches, self.data_manager.config.batch_size)

@@ -333,49 +333,64 @@ class tfConfig(DMConfig):
 
 class tfDatasetManager(DataManager):
     filenames_placeholder = None
-    dataset = None
     iterator = None
 
     train_filenames = []
     dev_filenames = []
     test_filenames = []
 
-    def get_init_feed_dict(self, dataset_name):
-        if dataset_name is 'train':
-            return {self.filenames_placeholder: self.train_filenames}
-        elif dataset_name is 'dev':
-            return {self.filenames_placeholder: self.dev_filenames}
-        elif dataset_name is 'test':
-            return {self.filenames_placeholder: self.test_filenames}
-        else:
-            return None
+    def initialize_iterators(self, sess):
+        sess.run(
+           [self.train_iterator.initializer, 
+            self.dev_iterator.initializer, 
+            self.test_iterator.initializer]
+        ) 
+
+        self.handle_train, self.handle_dev, self.handle_test =\
+            sess.run(
+                [self.train_iterator.string_handle(), 
+                 self.dev_iterator.string_handle(),
+                 self.test_iterator.string_handle()]
+            ) 
 
     def init_filenames(self):
         self.train_filenames = glob(self.config.train_fn_tag)
         self.dev_filenames = glob(self.config.dev_fn_tag)
         self.test_filenames = glob(self.config.test_fn_tag)
 
-    def init_dataset(self):
-        # with tf.Graph().as_default():
-        self.filenames_placeholder = tf.placeholder(tf.string, shape=[None])
-
-        dataset = tf.data.TFRecordDataset(self.filenames_placeholder)
+    def init_dataset(self, dataset):
         dataset = dataset.map(tf_record_parser(one_hot=self.config.one_hot))  # Parse the record into tensors.
         dataset = dataset.repeat(self.config.epochs_per_init)  # Repeat the input indefinitely.
         dataset = dataset.shuffle(buffer_size=self.config.shuffle_buffer_size)
         dataset = dataset.batch(self.config.batch_size)
-        # dataset = dataset.padded_batch(self.config.batch_size,
-            # padded_shapes={'Body': [self.config.max_length, 2], 'Length': None, 'Label': None})
-            # padded_shapes=([self.config.max_length, 2], None, None))
-        iterator = dataset.make_initializable_iterator()
+        return dataset
 
-        self.dataset = dataset
+    def init_datasets(self):
+        # with tf.Graph().as_default():
+        self.train_fn_tensor = tf.constant(self.train_filenames)
+        self.dev_fn_tensor = tf.constant(self.dev_filenames)
+        self.test_fn_tensor = tf.constant(self.test_filenames)
+
+        train_dataset = tf.data.TFRecordDataset(self.train_fn_tensor)
+        self.train_dataset = self.init_dataset(train_dataset)
+        self.train_iterator = self.train_dataset.make_initializable_iterator()
+
+        dev_dataset = tf.data.TFRecordDataset(self.dev_fn_tensor)
+        self.dev_dataset = self.init_dataset(dev_dataset)
+        self.dev_iterator = self.dev_dataset.make_initializable_iterator()
+
+        test_dataset = tf.data.TFRecordDataset(self.test_fn_tensor)
+        self.test_dataset = self.init_dataset(test_dataset)
+        self.test_iterator = self.test_dataset.make_initializable_iterator()
+
+        # make feedable iterator
+        self.handle = tf.placeholder(tf.string, shape=[])
+        iterator = tf.data.Iterator.from_string_handle(
+                self.handle, self.train_dataset.output_types, self.train_dataset.output_shapes)
         self.iterator = iterator
-        self.next_batch = iterator.get_next()
 
-    @property
-    def initializer(self):
-        return self.iterator.initializer
+        self.next_batch = self.iterator.get_next()
+
 
     @property
     def batch_op(self):
@@ -383,8 +398,8 @@ class tfDatasetManager(DataManager):
 
     def __init__(self, config):
         self.config = config
-        self.init_dataset()
         self.init_filenames()
+        self.init_datasets()
 
 def test_main4():
     config = tfConfig()

@@ -80,28 +80,13 @@ class TfModelBase(object):
         raise NotImplementedError
 
     def train_dict(self):
-        """This method should feed `X` to the placeholder that defines
-        the inputs and `y` to the placeholder that defines the output.
-        For example:
+        raise NotImplementedError
 
-        {self.inputs: X, self.outputs: y}
-
-        This is used during training.
-
-        """
+    def dev_dict(self):
         raise NotImplementedError
 
     def test_dict(self):
-        """This method should feed `X` to the placeholder that defines
-        the inputs. For example:
-
-        {self.inputs: X}
-
-        This is used during training.
-
-        """
         raise NotImplementedError
-
 
     # Load the session variables
     def try_restore(self, sess, saver):
@@ -116,7 +101,8 @@ class TfModelBase(object):
         else:
             return False
 
-    def fit(self, tfconfig, restore_weights = False, batches_to_eval=5000, max_iter=10, n_val_batches = 40, test_at_end=True):
+    def fit(self, tfconfig, restore_weights = False, 
+        batches_to_eval=500, batches_to_train_write=10, max_iter=10, n_val_batches = 40, test_at_end=True):
         """ Trains using a tf DatasetManager
 
         Parameters
@@ -135,8 +121,6 @@ class TfModelBase(object):
         tf.reset_default_graph()
         # with tf.Graph().as_default():
 
-        sess = tf.InteractiveSession()
-        self.sess = sess
 
         if self.data_manager is None:
             logger.info("Initializing data manager...",)
@@ -164,7 +148,9 @@ class TfModelBase(object):
 
         self.saver = tf.train.Saver( var_list=tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) )
 
-
+        # Now, create session
+        sess = tf.InteractiveSession()
+        self.sess = sess
 
         restored = self.try_restore(sess, self.saver) if restore_weights else False
         if restored:
@@ -177,10 +163,13 @@ class TfModelBase(object):
         train_writer = tf.summary.FileWriter(self.summaries_dir + '/train', sess.graph)
         dev_writer = tf.summary.FileWriter(self.summaries_dir + '/dev')
 
+        # initialize the datasets
+        self.data_manager.initialize_iterators(sess)
+
+        # Run the training loop.  
         for i in range(1, max_iter+1):
             logger.info("Starting epoch %d", i)
 
-            sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict('train')) 
             batch_cnt = 0
             loss = 0
             try:
@@ -191,17 +180,20 @@ class TfModelBase(object):
                         feed_dict=self.train_dict()
                     )
 
-                    train_writer.add_summary(summary,
-                        tf.train.global_step(sess, self.global_step)
-                    )
-                    train_writer.flush()
-
                     batch_cnt += 1
+
+                    if (batch_cnt % batches_to_train_write == 0):
+                        train_writer.add_summary(summary,
+                            tf.train.global_step(sess, self.global_step)
+                        )
+                        train_writer.flush()
+
                     if (batch_cnt > 0 and batch_cnt % batches_to_eval == 0):
                         logger.info(" == Evaluating on development data after batch %d", batch_cnt)
 
                         # very bad! change this soon!
-                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'dev', 
+                        dev_labels, dev_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 
+                                        feed_dict = self.dev_dict(),
                                         batch_lim = n_val_batches, writer = dev_writer)
                         prec, rec, f1, _ = metrics.precision_recall_fscore_support(dev_labels, dev_preds, average='binary') 
                         logger.info("== Results for %d batches of size %d", n_val_batches, self.data_manager.config.batch_size)
@@ -211,14 +203,14 @@ class TfModelBase(object):
                         if self.ckpts_prefix is not None:
                             logger.info("-- Saving model")
                             self.saver.save(sess, self.ckpts_prefix, global_step=self.global_step) 
-                        # reset, back to training dataset
-                        sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict('train')) 
 
                 if (batch_cnt > 0 and batch_cnt % 10 == 0):
                     logger.info(" = batch %d", batch_cnt)
 
             except tf.errors.OutOfRangeError:
-                pass
+               # reinitialize iterators
+               logger.info("== exhausted dataset!") 
+               self.data_manager.initialize_iterators(sess)
 
             logger.info("Finished epoch %d, ran %d batches", i, batch_cnt)
 
@@ -226,7 +218,8 @@ class TfModelBase(object):
             logger.info(" == Evaluating on test data after training")
 
             n_test_batches = 100
-            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess, 'test', 
+            test_labels, test_preds, _word_ids, _email_ids = self.evaluate_tfdata(sess,
+                feed_dict = self.test_dict(),
                 batch_lim = n_test_batches, writer = None)
             prec, rec, f1, _ = metrics.precision_recall_fscore_support(test_labels, test_preds, average='binary') 
             logger.info("== Results for %d batches of size %d", n_test_batches, self.data_manager.config.batch_size)
@@ -308,9 +301,7 @@ class TfModelBase(object):
         return np.argmax(probs, axis=1), inputs, lens, np.argmax(outputs, axis=1), email_ids
 
 
-    def evaluate_tfdata(self, sess, dataset_name='dev', batch_lim=20, writer=None):
-
-        sess.run(self.data_manager.initializer, feed_dict=self.data_manager.get_init_feed_dict(dataset_name))
+    def evaluate_tfdata(self, sess, feed_dict, batch_lim=20, writer=None):
 
         preds = []
         labels = []
@@ -322,7 +313,7 @@ class TfModelBase(object):
 
                 summary, preds_batch_, labels_batch_, word_ids_batch, email_ids_batch = sess.run(
                     [self.summary, self.probs, self.outputs, self.word_ids, self.ids_batch],
-                    feed_dict=self.test_dict()
+                    feed_dict=feed_dict
                 )
 
                 if writer is not None:
@@ -342,7 +333,7 @@ class TfModelBase(object):
                     logger.info(" - batch %d", batch_cnt)
 
         except tf.errors.OutOfRangeError:
-            pass
+            self.data_manager.initialize_iterators(sess)
 
         logger.info("Ran %d batches", batch_cnt) 
 

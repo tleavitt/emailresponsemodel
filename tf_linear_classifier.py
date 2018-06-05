@@ -90,6 +90,8 @@ class TfLinearClassifier(TfModelBase):
         """Generates placeholder variables to represent the input tensors
         """
         inputs_batch, lens_batch, labels_batch, self.ids_batch = self.data_manager.batch_op
+        # inputs_batch, lens_batch, labels_batch, self.ids_batch = tf.map_fn(lambda x: x, self.data_manager.batch_op)
+        # something = self.data_manager.batch_op
 
         batch_size = tf.shape(inputs_batch)[0]
         self.inputs_placeholder = tf.reshape(inputs_batch, 
@@ -164,38 +166,14 @@ class TfLinearClassifier(TfModelBase):
 
 
     def train_dict(self):
-        """Converts `X` to an np.array` using _convert_X` and feeds
-        this to `inputs`, , and gets the true length of each example
-        and passes it to `fit` as well. `y` is fed to `outputs`.
+        return {self.data_manager.handle: self.data_manager.handle_train}
 
-        Parameters
-        ----------
-        X : list of lists
-        y : list
-
-        Returns
-        -------
-        dict, list of int
-
-        """
-        return {}
+    def dev_dict(self):
+        return {self.data_manager.handle: self.data_manager.handle_train}
 
     def test_dict(self):
-        """Converts `X` to an np.array` using _convert_X` and feeds
-        this to `inputs`, and gets the true length of each example and
-        passes it to `fit` as well.
+        return {self.data_manager.handle: self.data_manager.handle_test}
 
-        Parameters
-        ----------
-        X : list of lists
-        y : list
-
-        Returns
-        -------
-        dict, list of int
-
-        """
-        return {}
 
     # override to use Adam
     def get_optimizer(self):

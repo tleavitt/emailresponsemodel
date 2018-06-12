@@ -24,7 +24,7 @@ import random
 import collections
 
 from data_util import DMConfig, EmailVectorizer, get_email_tok
-from tfdata_helpers import write_to_tfrecords, tf_filename_func, tf_20k_filename_func
+from tfdata_helpers import write_to_tfrecords, tf_filename_func, tf_20k_filename_func, tf_email_filename_func
 from util import read_records, check_dirs
 
 from defs import N_CLASSES, BASE_DIR
@@ -531,7 +531,12 @@ def write_records(data_dir = BASE_DIR, start_it = 0,
 
         if SHOULD_USE_TFRECORDS:
             write_func = write_to_tfrecords
-            filename_func = tf_20k_filename_func if USE_20k else tf_filename_func
+            if USE_EMAIL:
+                filename_func = tf_email_filename_func
+            elif USE_20k:
+                filename_func = tf_20k_filename_func
+            else:
+                filename_func = tf_filename_func
         else:
             write_func = write_records_to_pickle
             filename_func = lambda dataset, it: os.path.abspath(

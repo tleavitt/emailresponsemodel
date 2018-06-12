@@ -101,7 +101,7 @@ class TfModelBase(object):
         else:
             return False
 
-    def fit(self, tfconfig, use_20k = True, restore_weights = False, batch_lim=BATCH_LIM,
+    def fit(self, tfconfig, use_20k=False, use_email=False, restore_weights=False, batch_lim=BATCH_LIM,
         batches_to_eval=500, batches_to_train_write=10, max_iter=10, n_val_batches = 40, test_at_end=True):
         """ Trains using a tf DatasetManager
 
@@ -125,7 +125,7 @@ class TfModelBase(object):
         if self.data_manager is None:
             logger.info("Initializing data manager...",)
             start = time.time()
-            self.data_manager = tfDatasetManager(tfconfig, use_20k = use_20k)
+            self.data_manager = tfDatasetManager(tfconfig, use_20k = use_20k, use_email = use_email)
             logger.info("took %d s", time.time() - start)
 
 

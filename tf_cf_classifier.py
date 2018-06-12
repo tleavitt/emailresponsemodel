@@ -76,6 +76,7 @@ class TfCFClassifier(TfBiRNNClassifier):
             state_keep = 0.6,
             **kwargs):
 
+        super().__init__(**kwargs)
         self.n_users = n_users
         self.embedding = embedding
         self.email_embedding = None
@@ -91,7 +92,6 @@ class TfCFClassifier(TfBiRNNClassifier):
         self.context_size = context_size
         self.inputs_keep = inputs_keep
         self.state_keep = state_keep
-        super().__init__(**kwargs)
         # self.eta = self.config.lr
 
         self.params += [

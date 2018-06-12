@@ -161,7 +161,8 @@ def get_message_id(contents):
 
 def parse_body_text(message_data, body_text):
     str_body = body_text.strip()
-    if email_vectorizer is not None:
+    # if email_vectorizer is not None:
+    if SHOULD_TOKENIZE:
         toks = nltk.word_tokenize(str_body)
         word_feats, length = email_vectorizer.featurize_email(toks, SHOULD_PAD)
         message_data['Body'] = word_feats
@@ -475,6 +476,7 @@ def undersample(record_generator, total_records = 50000):
 def write_records(data_dir = BASE_DIR, start_it = 0, 
                   record_limit = 50000, loop_limit = 50000, conservative = True):
 
+    print("== Starting write loop. Using tfrecord: {}, tokenizing: {}".format(SHOULD_USE_TFRECORDS,  SHOULD_TOKENIZE))
     random.seed(42)
     it = start_it 
     num_train_records = 0
@@ -544,6 +546,9 @@ if __name__ == '__main__':
 
     if (len(sys.argv) > 1 and sys.argv[1] == 'tfrecord'):
         SHOULD_USE_TFRECORDS = True
+
+    if (len(sys.argv) > 1 and sys.argv[1] == 'tokenize'):
+        SHOULD_TOKENIZE = True
 
     record_lim = 10
     if (len(sys.argv) > 2 and represents_int(sys.argv[2]) ):

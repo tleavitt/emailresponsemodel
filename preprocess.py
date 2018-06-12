@@ -515,7 +515,7 @@ def write_records(data_dir = BASE_DIR, start_it = 0,
 
         if SHOULD_USE_TFRECORDS:
             write_func = write_to_tfrecords
-            filename_func = tf_20k_filename_func if USE_20k else tf_filename_func
+            filename_func = tf_20k_filename_func if USE_20K else tf_filename_func
         else:
             write_func = write_records_to_pickle
             filename_func = lambda dataset, it: os.path.abspath(

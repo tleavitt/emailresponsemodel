@@ -101,7 +101,7 @@ class TfModelBase(object):
         else:
             return False
 
-    def fit(self, tfconfig, restore_weights = False, 
+    def fit(self, tfconfig, restore_weights = False, batch_lim=BATCH_LIM,
         batches_to_eval=500, batches_to_train_write=10, max_iter=10, n_val_batches = 40, test_at_end=True):
         """ Trains using a tf DatasetManager
 
@@ -173,7 +173,7 @@ class TfModelBase(object):
             batch_cnt = 0
             loss = 0
             try:
-                for it in range(BATCH_LIM):
+                for it in range(batch_lim):
 
                     _, summary, batch_loss = sess.run(
                         [self.optimizer, self.summary, self.cost],

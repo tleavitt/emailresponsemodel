@@ -605,4 +605,6 @@ if __name__ == "__main__":
     # test_main4()
     # test_main3()
     # test_main1()
-    create_and_save_tok2id()
+    # create_and_save_tok2id()
+    create_and_save_email2id()
+

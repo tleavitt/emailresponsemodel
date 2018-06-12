@@ -47,7 +47,8 @@ if os.path.exists(config.tok2id_path):
 
     email_vectorizer = EmailVectorizer(config, tok2id)
 
-    print("Initialized tok2id and email_vectorizer")
+    print("-Initialized tok2id and email_vectorizer")
+    print("-from: {}".format(config.tok2id_path))
 else:
     tok2id = None
     email_vectorizer = None
@@ -56,7 +57,7 @@ def strformat_fn(path, start=BASE_DIR):
     return os.path.relpath(path, start) 
 
 def random_emails_generator(top_dir):
-    print("enumerating source files...", end="")
+    print("=enumerating source files...", end="")
     sys.stdout.flush()
     
     all_fns = glob('{}/*/*/*'.format(os.path.abspath(top_dir)))

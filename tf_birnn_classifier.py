@@ -176,6 +176,7 @@ class TfBiRNNClassifier(TfModelBase):
             fc_ins = rnn_state
         # Add a fully connected softmax layer:
 
+        self.fc_ins = fc_ins
         preds = tf.contrib.layers.fully_connected(
             fc_ins,
             N_CLASSES,

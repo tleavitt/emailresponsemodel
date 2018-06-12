@@ -69,28 +69,69 @@ def write_to_tfrecords(email_examples, filepath):
       writer.write(example.SerializeToString())
 
 
-def parse_tfrecord(example):
+def write_to_tfrecords_email(email_examples, filepath):
+  """Converts a dataset to tfrecords."""
+  if filepath is None: raise "No filename given."
+  print('Writing', filepath)
+  check_dirs(os.path.dirname(filepath))
+
+  with tf.python_io.TFRecordWriter(filepath) as writer:
+    for email in email_examples:
+      body, length, label = email['Body'], email['Length'], email['Label']
+      to, from_ = email['To'], email['From']
+      body = np.asarray(body, dtype=np.int64)
+      body_raw = body.tostring()
+      id_ = bytes(email['Id'], encoding="utf-8", errors='replace')
+      example = tf.train.Example(
+          features=tf.train.Features(
+              feature={
+                  'Body_raw': _bytes_feature(body_raw),
+                  'Length': _int64_feature(length),
+                  'Label': _int64_feature(label),
+                  'To': _int64_feature(to),
+                  'From': _int64_feature(from_),
+                  'Id': _bytes_feature(id_),
+              }))
+      writer.write(example.SerializeToString())
+
+
+def parse_tfrecord(example, email=False):
   features = {
               'Body_raw': tf.FixedLenFeature((), tf.string, default_value=''),
               'Length': tf.FixedLenFeature((), tf.int64, default_value=0),
               'Label': tf.FixedLenFeature((), tf.int64, default_value=0),
               'Id': tf.FixedLenFeature((), tf.string, default_value=''),
              }
+  if email:
+    features['To'] = tf.FixedLenFeature((), tf.int64, default_value=0)
+    features['From'] = tf.FixedLenFeature((), tf.int64, default_value=0)
+
   parsed_features = tf.parse_single_example(example, features)
   parsed_features['Body'] = tf.decode_raw(parsed_features['Body_raw'], out_type=tf.int64)
   parsed_features['Body'] = tf.reshape(parsed_features['Body'], shape=(MAX_LENGTH, 2))
-  return parsed_features['Body'], parsed_features['Length'], parsed_features['Label'], parsed_features['Id']
+  if email:
+    feats = (parsed_features['Body'], parsed_features['Length'], parsed_features['Label'], parsed_features['Id'],\
+             parsed_features['To'], parsed_features['From'])
+  else:
+    feats = (parsed_features['Body'], parsed_features['Length'], parsed_features['Label'], parsed_features['Id'])
+  return feats
 
 
-def tf_record_parser(one_hot=True):
+def tf_record_parser(one_hot=True, email=False):
 
   def parse(example):
-    body, length, label, id_ = parse_tfrecord(example)
+    body, length, label, id_ = parse_tfrecord(example, email=False)
     if one_hot:
       label = tf.one_hot(label, N_CLASSES)
     return body, length, label, id_
 
-  return parse
+  def parse_email(example):
+    body, length, label, id_, to, from_ = parse_tfrecord(example, email=True)
+    if one_hot:
+      label = tf.one_hot(label, N_CLASSES)
+    return body, length, label, id_, to, from_
+
+  return parse_email if email else parse
 
 if __name__ == '__main__':
 

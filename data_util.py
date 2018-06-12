@@ -66,8 +66,8 @@ class DMConfig(object):
 
     dev_log_file = '{}/lstm/devpredictions.log'.format(PROJECT_DIR)
     dm_save_dir = '{}/lstm/'.format(PROJECT_DIR)
-    tok2id_path = '{}/data/tok2id.pkl.gz'.format(PROJECT_DIR)
-    id2tok_path = '{}/data/id2tok.pkl.gz'.format(PROJECT_DIR)
+    tok2id_path = '{}/data/tok2id_20k.pkl.gz'.format(PROJECT_DIR)
+    id2tok_path = '{}/data/id2tok_20k.pkl.gz'.format(PROJECT_DIR)
 
     vocab_filepath = '{}/data/vocab.txt'.format(PROJECT_DIR)
     vectors_filepath = '{}/data/wordVectors.txt'.format(PROJECT_DIR)

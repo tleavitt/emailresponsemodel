@@ -17,13 +17,20 @@ from util import check_dirs
 from defs import MAX_LENGTH, N_CLASSES
 
 
-DIRECTORY = os.path.abspath('../data-disk/processed-data/tfrecords')
+DIRECTORY_10k = os.path.abspath('../data-disk/processed-data/tfrecords-2')
+DIRECTORY_20k = os.path.abspath('../data-disk/processed-data/tfrecords')
 
 
 tf_filename_func = lambda dataset, it: os.path.abspath(
-                "{}/{}{}.tfrecords".format(DIRECTORY, dataset, it)
+                "{}/{}{}.tfrecords".format(DIRECTORY_10k, dataset, it)
                 # "{}/buy_{}{}.tfrecords".format(DIRECTORY, dataset, it)
             )
+
+tf_20k_filename_func = lambda dataset, it: os.path.abspath(
+                "{}/{}{}.tfrecords".format(DIRECTORY_20k, dataset, it)
+                # "{}/buy_{}{}.tfrecords".format(DIRECTORY, dataset, it)
+            )
+
 
 
 def _int64_array(value):

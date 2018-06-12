@@ -25,7 +25,7 @@ import collections
 
 from data_util import DMConfig, EmailVectorizer
 from tfdata_helpers import write_to_tfrecords, tf_filename_func
-from util import read_records
+from util import read_records, check_dirs
 
 from defs import N_CLASSES, BASE_DIR
 
@@ -556,7 +556,7 @@ if __name__ == '__main__':
     if (len(sys.argv) > 4 and represents_int(sys.argv[4]) ):
         start_it = int(sys.argv[4])
 
-    write_records(start_it = start_it, data_dir = BASE_DIR, record_limit = record_lim, loop_limit = 10000)
+    write_records(start_it = start_it, data_dir = BASE_DIR, record_limit = record_lim, loop_limit = 20000)
     # records = read_records('./processed-data/skilling_records0_train.pkl.gz')
     # pdb.set_trace()
     # num_ones = reduce(lambda cum, r: cum + r['Label'], records, 0)

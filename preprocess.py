@@ -494,7 +494,7 @@ def undersample(record_generator, total_records = 50000):
 def write_records(data_dir = BASE_DIR, start_it = 0, 
                   record_limit = 50000, loop_limit = 50000, conservative = True):
 
-    print("== Starting write loop. Using tfrecord: {}, tokenizing: {}".format(SHOULD_USE_TFRECORDS,  SHOULD_TOKENIZE))
+    print("== Starting write loop. Using tfrecord: {}, tokenizing: {}, using email: {}".format(SHOULD_USE_TFRECORDS,  SHOULD_TOKENIZE, USE_EMAIL))
     random.seed(42)
     it = start_it 
     num_train_records = 0

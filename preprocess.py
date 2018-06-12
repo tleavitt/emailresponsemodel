@@ -32,7 +32,7 @@ from defs import N_CLASSES, BASE_DIR
 DATA_DIR = ['{}/*'.format(d) for d in BASE_DIR]
 
 SHOULD_USE_TFRECORDS = False
-SHOULD_TOKENIZE = True
+SHOULD_TOKENIZE = False
 SHOULD_FEATURIZE = True
 SHOULD_PAD = True
 SHOULD_SHUFFLE_VAL = True
@@ -544,19 +544,17 @@ def represents_int(s):
 
 if __name__ == '__main__':
 
-    if (len(sys.argv) > 1 and sys.argv[1] == 'tfrecord'):
-        SHOULD_USE_TFRECORDS = True
+    SHOULD_USE_TFRECORDS = (len(sys.argv) > 1 and sys.argv[1] == 'tfrecord'):
 
-    if (len(sys.argv) > 1 and sys.argv[1] == 'tokenize'):
-        SHOULD_TOKENIZE = True
+    SHOULD_TOKENIZE = (len(sys.argv) > 2 and sys.argv[2] == 'tokenize'):
 
     record_lim = 10
-    if (len(sys.argv) > 2 and represents_int(sys.argv[2]) ):
-        record_lim = int(sys.argv[2])
+    if (len(sys.argv) > 3 and represents_int(sys.argv[3]) ):
+        record_lim = int(sys.argv[3])
 
     start_it = 0
-    if (len(sys.argv) > 3 and represents_int(sys.argv[3]) ):
-        start_it = int(sys.argv[3])
+    if (len(sys.argv) > 4 and represents_int(sys.argv[4]) ):
+        start_it = int(sys.argv[4])
 
     write_records(start_it = start_it, data_dir = BASE_DIR, record_limit = record_lim, loop_limit = 10000)
     # records = read_records('./processed-data/skilling_records0_train.pkl.gz')

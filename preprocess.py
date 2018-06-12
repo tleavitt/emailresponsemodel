@@ -23,7 +23,7 @@ import itertools
 import random
 import collections
 
-from data_util import DMConfig, EmailVectorizer
+from data_util import DMConfig, EmailVectorizer, get_email_tok
 from tfdata_helpers import write_to_tfrecords, tf_filename_func, tf_20k_filename_func
 from util import read_records, check_dirs
 
@@ -34,6 +34,7 @@ DATA_DIR = ['{}/*'.format(d) for d in BASE_DIR]
 SHOULD_USE_TFRECORDS = False
 SHOULD_TOKENIZE = False
 USE_20K = True
+USE_EMAIL = False
 SHOULD_FEATURIZE = True
 SHOULD_PAD = True
 SHOULD_SHUFFLE_VAL = True
@@ -52,6 +53,15 @@ if os.path.exists(config.tok2id_path):
 else:
     tok2id = None
     email_vectorizer = None
+
+
+if os.path.exists(config.email2id_path):
+    with gzip.open(os.path.abspath(config.email2id_path)) as f:
+        email2id = cPickle.load(f)
+
+    print("-Initialized email2id from: {}".format(config.email2id_path))
+else:
+    email2id = None
 
 def strformat_fn(path, start=BASE_DIR):
     return os.path.relpath(path, start) 
@@ -160,6 +170,11 @@ def get_message_id(contents):
 #     else:
 #         message_data['Body'] = str_body
 #         message_data['Length'] = len(str_body)
+
+def parse_send_recv(message_data):
+    if USE_EMAIL and email2id is not None:
+        message_data['To'] = get_email_tok(message_data['To'], email2id)
+        message_data['From'] = get_email_tok(message_data['From'], email2id)
 
 def parse_body_text(message_data, body_text):
     str_body = body_text.strip()
@@ -356,6 +371,7 @@ def parse_message(content, content_start, metadata_parser, label, id_, conservat
     message_data['Label'] = label
 
     body_start = metadata_parser(content, content_start, message_data)
+    parse_send_recv(message_data) 
     if body_start >= 0:
         parse_body_text(message_data, content[body_start:])
     else:
@@ -557,6 +573,8 @@ if __name__ == '__main__':
     start_it = 0
     if (len(sys.argv) > 4 and represents_int(sys.argv[4]) ):
         start_it = int(sys.argv[4])
+
+    USE_EMAIL = (len(sys.argv) > 5 and sys.argv[5] == 'email')
 
     write_records(start_it = start_it, data_dir = BASE_DIR, record_limit = record_lim, loop_limit = 20000)
     # records = read_records('./processed-data/skilling_records0_train.pkl.gz')

@@ -207,6 +207,9 @@ def build_email2id(email_examples, n_embeddings=10000):
 
     return email2id
 
+def get_email_tok(email, email2id):
+    return email2id.get(email, email2id[UNK])
+
 
 def dm_load(config):
     # Make sure the directory exists.
@@ -347,6 +350,7 @@ class EmailVectorizer(object):
 class tfConfig(DMConfig):
     shuffle_buffer_size = 5000
     epochs_per_init = 1
+    use_email = False
 
 class tfDatasetManager(DataManager):
     filenames_placeholder = None
@@ -377,7 +381,8 @@ class tfDatasetManager(DataManager):
         self.test_filenames = glob(fn_func('test', '*'))
 
     def init_dataset(self, dataset):
-        dataset = dataset.map(tf_record_parser(one_hot=self.config.one_hot))  # Parse the record into tensors.
+        dataset = dataset.map(tf_record_parser(one_hot=self.config.one_hot,
+                            email=self.config.use_email))  # Parse the record into tensors.
         dataset = dataset.repeat(self.config.epochs_per_init)  # Repeat the input indefinitely.
         dataset = dataset.shuffle(buffer_size=self.config.shuffle_buffer_size)
         dataset = dataset.batch(self.config.batch_size)
@@ -414,8 +419,9 @@ class tfDatasetManager(DataManager):
     def batch_op(self):
         return self.next_batch
 
-    def __init__(self, config, use_20k=True):
+    def __init__(self, config, use_20k=True, use_email=False):
         self.config = config
+        self.config.use_email = use_email
         self.init_filenames(use_20k)
         self.init_datasets()
 

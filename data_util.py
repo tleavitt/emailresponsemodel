@@ -27,6 +27,7 @@ from scipy.stats import mstats
 from nltk.corpus import stopwords
 
 import numpy as np
+import itertools
 import tensorflow as tf
 from glove import loadWordVectorsIntoMemory
 from util import one_hot, ConfusionMatrix, read_records
@@ -68,6 +69,8 @@ class DMConfig(object):
     dm_save_dir = '{}/lstm/'.format(PROJECT_DIR)
     tok2id_path = '{}/data/tok2id_20k.pkl.gz'.format(PROJECT_DIR)
     id2tok_path = '{}/data/id2tok_20k.pkl.gz'.format(PROJECT_DIR)
+    email2id_path = '{}/data/email2id.pkl.gz'.format(PROJECT_DIR)
+    id2email_path = '{}/data/id2email.pkl.gz'.format(PROJECT_DIR)
 
     vocab_filepath = '{}/data/vocab.txt'.format(PROJECT_DIR)
     vectors_filepath = '{}/data/wordVectors.txt'.format(PROJECT_DIR)
@@ -187,6 +190,23 @@ def build_tok2id(email_examples, n_embeddings=10000, should_tokenize=False):
     logger.info("Built dictionary for %d features.", len(tok2id))
 
     return tok2id
+
+def build_email2id(email_examples, n_embeddings=10000):
+    # Preprocess data to construct an embedding
+    # Reserve 0 for the special UNK token.
+    all_emails = itertools.chain(
+        (email['From'] for email in email_examples),
+        (email['To'] for email in email_examples)
+    )
+    email2id = build_dict(all_emails,
+        offset=1, max_words=n_embeddings
+    )
+    email2id.update(build_dict([UNK], offset=len(email2id)))
+    assert sorted(email2id.items(), key=lambda t: t[1])[0][1] == 1
+    logger.info("Built dictionary for %d features.", len(email2id))
+
+    return email2id
+
 
 def dm_load(config):
     # Make sure the directory exists.
@@ -545,6 +565,19 @@ def create_and_save_tok2id():
 
     with gzip.open(config.id2tok_path, 'w') as f:
         cPickle.dump(id2tok, f)
+
+def create_and_save_email2id():
+    config = DMConfig()
+    train_emails, dev_emails, test_emails = load_and_preprocess_data(config)
+
+    email2id = build_email2id(train_emails, config.n_embeddings)
+    id2email = {email2id[k]:k for k in email2id}
+
+    with gzip.open(config.email2id_path, 'w') as f:
+        cPickle.dump(email2id, f)
+
+    with gzip.open(config.id2email_path, 'w') as f:
+        cPickle.dump(id2email, f)
 
 def test_main1():
     config = DMConfig()

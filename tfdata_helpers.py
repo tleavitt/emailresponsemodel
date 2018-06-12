@@ -19,18 +19,18 @@ from defs import MAX_LENGTH, N_CLASSES
 
 DIRECTORY_10k = os.path.abspath('../data-disk/processed-data/tfrecords-2')
 DIRECTORY_20k = os.path.abspath('../data-disk/processed-data/tfrecords')
+DIRECTORY_EMAIL = os.path.abspath('../data-disk/processed-data/tfrecords-email')
 
 
-tf_filename_func = lambda dataset, it: os.path.abspath(
-                "{}/{}{}.tfrecords".format(DIRECTORY_10k, dataset, it)
-                # "{}/buy_{}{}.tfrecords".format(DIRECTORY, dataset, it)
-            )
+def tf_fn_func_factory(directory):
+  tf_fn_func = lambda dataset, it: os.path.abspath(
+                  "{}/{}{}.tfrecords".format(directory, dataset, it)
+              )
+  return tf_fn_func
 
-tf_20k_filename_func = lambda dataset, it: os.path.abspath(
-                "{}/{}{}.tfrecords".format(DIRECTORY_20k, dataset, it)
-                # "{}/buy_{}{}.tfrecords".format(DIRECTORY, dataset, it)
-            )
-
+tf_filename_func = tf_fn_func_factory(DIRECTORY_10k)
+tf_20k_filename_func = tf_fn_func_factory(DIRECTORY_20k)
+tf_email_filename_func = tf_fn_func_factory(DIRECTORY_EMAIL)
 
 
 def _int64_array(value):

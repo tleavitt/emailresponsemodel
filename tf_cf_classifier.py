@@ -158,16 +158,17 @@ class TfCFClassifier(TfBiRNNClassifier):
         q_email = self.fc_ins 
 
         item_vec = tf.contrib.layers.fully_connected(
-            tf.concat([u_from, q_email], axis=1)
+            tf.concat([u_from, q_email], axis=1),
             self.embed_dim,
             activation_fn=None
         )
+        print("item_vec: ", item_vec.get_shape())
         phi_user = tf.multiply(u_to, item_vec)
 
         phi_item = q_email
 
         preds =  tf.contrib.layers.fully_connected(
-            tf.concat([phi_user, phi_item], axis=1)
+            tf.concat([phi_user, phi_item], axis=1),
             N_CLASSES,
             activation_fn=None
         )

@@ -544,9 +544,9 @@ def represents_int(s):
 
 if __name__ == '__main__':
 
-    SHOULD_USE_TFRECORDS = (len(sys.argv) > 1 and sys.argv[1] == 'tfrecord'):
+    SHOULD_USE_TFRECORDS = (len(sys.argv) > 1 and sys.argv[1] == 'tfrecord')
 
-    SHOULD_TOKENIZE = (len(sys.argv) > 2 and sys.argv[2] == 'tokenize'):
+    SHOULD_TOKENIZE = (len(sys.argv) > 2 and sys.argv[2] == 'tokenize')
 
     record_lim = 10
     if (len(sys.argv) > 3 and represents_int(sys.argv[3]) ):

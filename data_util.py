@@ -33,7 +33,7 @@ from util import one_hot, ConfusionMatrix, read_records
 from glove import load_word_vector_mapping
 from defs import LBLS, NONE, LMAP, NUM, UNK, EMBED_SIZE, MAX_LENGTH, PROJECT_DIR, N_CLASSES
 from defs import FDIM, P_CASE, CASES, CASE2ID, START_TOKEN, END_TOKEN
-from tfdata_helpers import parse_tfrecord, tf_record_parser, tf_filename_func
+from tfdata_helpers import parse_tfrecord, tf_record_parser, tf_filename_func, tf_20k_filename_func
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -327,9 +327,6 @@ class EmailVectorizer(object):
 class tfConfig(DMConfig):
     shuffle_buffer_size = 5000
     epochs_per_init = 1
-    train_fn_tag = tf_filename_func('train', '*')
-    dev_fn_tag = tf_filename_func('dev', '*')
-    test_fn_tag = tf_filename_func('test', '*')
 
 class tfDatasetManager(DataManager):
     filenames_placeholder = None
@@ -353,10 +350,11 @@ class tfDatasetManager(DataManager):
                  self.test_iterator.string_handle()]
             ) 
 
-    def init_filenames(self):
-        self.train_filenames = glob(self.config.train_fn_tag)
-        self.dev_filenames = glob(self.config.dev_fn_tag)
-        self.test_filenames = glob(self.config.test_fn_tag)
+    def init_filenames(self, use_20k):
+        fn_func = tf_20k_filename_func if use_20k else tf_filename_func
+        self.train_filenames = glob(fn_func('train', '*'))
+        self.dev_filenames = glob(fn_func('dev', '*'))
+        self.test_filenames = glob(fn_func('test', '*'))
 
     def init_dataset(self, dataset):
         dataset = dataset.map(tf_record_parser(one_hot=self.config.one_hot))  # Parse the record into tensors.
@@ -396,9 +394,9 @@ class tfDatasetManager(DataManager):
     def batch_op(self):
         return self.next_batch
 
-    def __init__(self, config):
+    def __init__(self, config, use_20k=True):
         self.config = config
-        self.init_filenames()
+        self.init_filenames(use_20k)
         self.init_datasets()
 
 def test_main4():

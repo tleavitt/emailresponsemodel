@@ -51,7 +51,7 @@ class DMConfig(object):
     batch_size = 32
     collapse_classes = True
     embed_size = EMBED_SIZE
-    n_embeddings = 10000
+    n_embeddings = 20000
     len_cutoff = 500 # only consider emails of less than 500 tokens.
     max_length = MAX_LENGTH # all emails will be extended or truncated to have this length.
     train_filepath = '{}/processed-data/records0_train.pkl.gz'.format(PROJECT_DIR)

@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 from tf_model_base import TfModelBase
 from tf_birnn_classifier import TfBiRNNClassifier
+from tf_linear_classifier import TfLinearClassifier
 import warnings
 import pdb
 from defs import EMBED_SIZE, N_CASES, N_CLASSES, MAX_LENGTH
@@ -223,6 +224,111 @@ class TfCFClassifier(TfBiRNNClassifier):
             return np.argmax(probs, axis=1), inputs, lens, np.argmax(outputs, axis=1), email_ids
 
 
+class TfLinearCFClassifier(TfLinearClassifier):
+
+    def __init__(self, n_users,
+        embedding=None,
+        train_embedding=True,
+        max_length = MAX_LENGTH,
+        # model dimensions
+        **kwargs):
+
+    super().__init__(**kwargs)
+    self.email_embedding = None
+    self.n_users = n_users
+    self.embedding = embedding
+    self.embed_dim = EMBED_SIZE
+    self.max_length = max_length
+    self.train_embedding = train_embedding
+
+    # self.eta = self.config.lr
+
+    self.params += [
+        'embedding', 'embed_dim', 'max_length', 'train_embedding']
+
+    def define_embedding(self):
+
+        if type(self.email_embedding) == type(None):
+            self.email_embedding = np.random.uniform(size=[self.n_users, self.embed_dim],
+                low=-1.0, high=1.0) 
+
+
+    def add_placeholders(self):
+        """Generates placeholder variables to represent the input tensors
+        """
+        inputs_batch, lens_batch, labels_batch, self.ids_batch, to_batch, from_batch\
+             = self.data_manager.batch_op
+
+        batch_size = tf.shape(inputs_batch)[0]
+        self.inputs_placeholder = tf.reshape(inputs_batch, 
+            shape=(batch_size, self.max_length, 2), name="inputs") # word ids and case ids
+
+        self.word_ids = self.inputs_placeholder[:, :, 0]
+        self.case_ids = self.inputs_placeholder[:, :, 1]
+
+        self.lens_placeholder = tf.reshape(lens_batch, 
+            shape=(batch_size,), name="inputs_lengths")
+
+        self.outputs = tf.reshape(labels_batch, 
+            shape=(batch_size, N_CLASSES), name="labels")
+
+        self.to_ids = to_batch
+        self.from_ids = from_batch
+
+        # dropout params
+        self.input_keep_prob = tf.placeholder(tf.float32, shape=(), name="input_keep_prob")
+        self.state_keep_prob = tf.placeholder(tf.float32, shape=(), name="state_keep_prob")
+
+    def add_email_features(self):
+        """Adds a trainable embedding layer.
+
+        Returns:
+           email_embeddings: tf.Tensor of shape (None, max_length, n_features*embed_dim)
+        """
+        assert self.email_embedding.shape[-1] == self.embed_dim
+        all_email_embeddings = tf.get_variable('email_embedding', 
+            shape=self.email_embedding.shape, 
+            initializer=tf.constant_initializer(self.email_embedding),
+            trainable=True
+        )     
+
+        to_embeddings = tf.nn.embedding_lookup(
+            params=all_email_embeddings, 
+            ids=self.to_ids
+        )                                                                                                          
+        from_embeddings = tf.nn.embedding_lookup(
+            params=all_email_embeddings, 
+            ids=self.from_ids
+        )    
+        return to_embeddings, from_embeddings
+
+    def add_prediction_op(self):
+        self.n_word_features = self.embed_dim + N_CASES
+        q_email = self.get_features()
+        u_to, u_from = self.add_email_features()
+
+        item_vec = tf.contrib.layers.fully_connected(
+            tf.concat([u_from, q_email], axis=1),
+            self.embed_dim,
+            activation_fn=None
+        )
+        print("item_vec: ", item_vec.get_shape())
+        phi_user = tf.multiply(u_to, item_vec)
+
+        phi_item = q_email
+
+        preds =  tf.contrib.layers.fully_connected(
+            tf.concat([phi_user, phi_item], axis=1),
+            N_CLASSES,
+            activation_fn=None
+        )
+        return preds 
+
+
+    def build_graph(self):
+        self.define_embedding()
+        self.add_placeholders()
+        self.model = self.add_prediction_op()
 
 
 def simple_example():

@@ -81,24 +81,13 @@ class TfRandomClassifier(TfModelBase):
         return tf.no_op();
 
     def train_dict(self):
-        return {}
+        return {self.data_manager.handle: self.data_manager.handle_train}
+
+    def dev_dict(self):
+        return {self.data_manager.handle: self.data_manager.handle_dev}
 
     def test_dict(self):
-        """Converts `X` to an np.array` using _convert_X` and feeds
-        this to `inputs`, and gets the true length of each example and
-        passes it to `fit` as well.
-
-        Parameters
-        ----------
-        X : list of lists
-        y : list
-
-        Returns
-        -------
-        dict, list of int
-
-        """
-        return {}
+        return {self.data_manager.handle: self.data_manager.handle_test}
 
 
     def predict_proba(self, init_dm=True, dataset='dev'):

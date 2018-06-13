@@ -233,18 +233,18 @@ class TfLinearCFClassifier(TfLinearClassifier):
         # model dimensions
         **kwargs):
 
-    super().__init__(**kwargs)
-    self.email_embedding = None
-    self.n_users = n_users
-    self.embedding = embedding
-    self.embed_dim = EMBED_SIZE
-    self.max_length = max_length
-    self.train_embedding = train_embedding
+        super().__init__(**kwargs)
+        self.email_embedding = None
+        self.n_users = n_users
+        self.embedding = embedding
+        self.embed_dim = EMBED_SIZE
+        self.max_length = max_length
+        self.train_embedding = train_embedding
 
-    # self.eta = self.config.lr
+        # self.eta = self.config.lr
 
-    self.params += [
-        'embedding', 'embed_dim', 'max_length', 'train_embedding']
+        self.params += [
+            'embedding', 'embed_dim', 'max_length', 'train_embedding']
 
     def define_embedding(self):
 

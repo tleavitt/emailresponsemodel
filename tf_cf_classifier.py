@@ -240,7 +240,6 @@ class TfLinearCFClassifier(TfLinearClassifier):
         self.embed_dim = EMBED_SIZE
         self.max_length = max_length
         self.train_embedding = train_embedding
-
         # self.eta = self.config.lr
 
         self.params += [
@@ -304,7 +303,8 @@ class TfLinearCFClassifier(TfLinearClassifier):
 
     def add_prediction_op(self):
         self.n_word_features = self.embed_dim + N_CASES
-        q_email = self.get_features()
+        x = self.get_features()
+        q_email = tf.reduce_mean(x, axis=1)
         u_to, u_from = self.add_email_features()
 
         item_vec = tf.contrib.layers.fully_connected(
